@@ -430,11 +430,14 @@ export function tick(
     const shieldSpeed = (state.shieldSpeed / 20) * 0.09; // percentage of base speed
 
     if (player.alive) {
+      // Reverse shield direction for top-side players so "right" feels natural
+      const isTopSide = CASTLE_POSITIONS[player.id].y < CANVAS_HEIGHT / 2;
+      const dir = isTopSide ? -1 : 1;
       if (inp.SHIELD_LEFT) {
-        player.shield.angle -= shieldSpeed;
+        player.shield.angle -= shieldSpeed * dir;
       }
       if (inp.SHIELD_RIGHT) {
-        player.shield.angle += shieldSpeed;
+        player.shield.angle += shieldSpeed * dir;
       }
       player.shield.angle = ((player.shield.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     }

@@ -1,0 +1,15 @@
+name = "party-game-framework"
+main = "dist/worker.js"
+compatibility_date = "2024-03-20"
+
+[durable_objects]
+bindings = [
+  { name = "GAME_ROOM", class_name = "GameRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["GameRoom"]
+
+[site]
+bucket = "./public"

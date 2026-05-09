@@ -98,12 +98,11 @@ export interface GameDefinition<
   isGameOver(state: TState): boolean;
   getWinner(state: TState): PlayerId | null;
   renderer: GameRenderer<TState>;
+  canvasSize?: { width: number; height: number }; // Optional. Default 800x600.
+  aiAdapter?: AIAdapter<TState, TInput>;         // Custom AI; defaults to random valid input.
   settings?: SettingDefinition[];
-  aiAdapter?: AIAdapter<TState, TInput>;
-  onPlayerJoin?(state: TState, playerId: PlayerId): TState;
-  onPlayerLeave?(state: TState, playerId: PlayerId): TState;
-  howToPlay?: string;
   clientHooks?: ClientHooks<TState>;
+  howToPlay?: string;
 }
 
 // --- Network message types ---

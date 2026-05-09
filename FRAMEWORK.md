@@ -136,6 +136,8 @@ interface GameDefinition<
 
   // --- Client-side (browser bundle only; never imported by server) ---
   renderer: GameRenderer<TState>;
+  canvasSize?: { width: number; height: number }; // Optional. Default 800x600.
+
 
   // --- Optional server-side ---
   settings?: SettingDefinition[];             // Lobby config options (speed, map, etc.)
@@ -279,7 +281,7 @@ interface GameRenderer<TState> {
 }
 ```
 
-The canvas is **800×600** pixels. The framework clears it to black before each `render()` call.
+The canvas size is **800×600** by default. Games can override this by providing a `canvasSize` in their `GameDefinition`. The framework clears it to black before each `render()` call.
 
 **Coordinate system**: origin `(0, 0)` is top-left. X increases rightward. Y increases downward. Angles (`angleBetween`, `normalizeAngle`) are in radians, clockwise from the positive X axis.
 
@@ -729,7 +731,7 @@ interface GameConfig {
 - `TInput` values must be `boolean` or `number` only.
 - `renderer.render()` runs in the browser only. Never import renderer files from server entry points.
 - `createInitialState()`, `tick()`, `isGameOver()`, `getWinner()` run on both server and in-browser. Never reference `window`, `document`, or any browser API in these functions.
-- Canvas size is fixed at **800×600**. Do not resize it.
+- Canvas size is configurable via `canvasSize` in `GameDefinition`. Default is **800×600**.
 - `maxPlayers` must be between 2 and 8 inclusive.
 - `minPlayers` may be 1 (solo play). Handle the single-player case in `getWinner()`.
 

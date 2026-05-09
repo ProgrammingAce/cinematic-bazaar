@@ -202,6 +202,10 @@
         case "game_start":
           this.currentGame = gameRegistry.get(msg.gameId) ?? null;
           if (this.currentGame) {
+            if (this.currentGame.canvasSize) {
+              this.canvas.width = this.currentGame.canvasSize.width;
+              this.canvas.height = this.currentGame.canvasSize.height;
+            }
             this.input.init(this.currentGame.actions, this.currentGame.defaultActionMap);
             this.input.attach();
             if (this.currentGame.renderer.init)
@@ -1058,89 +1062,6 @@
       return null;
     return sorted[0].id;
   }
-  var aiAdapter = {
-    computeInput(state, playerId) {
-      const player = state.players.find((p) => p.id === playerId);
-      const inp = {
-        MOVE_LEFT: false,
-        MOVE_RIGHT: false,
-        SOFT_DROP: false,
-        HARD_DROP: false,
-        ROTATE_CW: false,
-        ROTATE_CCW: false,
-        HOLD: false
-      };
-      if (!player || !player.current || player.dead)
-        return inp;
-      if (state.tick - player.lastAiActionTick < 10) {
-        return player.lastAiInput;
-      }
-      const piece = player.current;
-      const board = player.board;
-      let bestScore = Infinity;
-      let bestCol = piece.col;
-      let bestRot = piece.rotation;
-      for (let rot = 0; rot < 4; rot++) {
-        const candidate = { ...piece, rotation: rot };
-        for (let col = 0; col < BOARD_COLS; col++) {
-          const placed = { ...candidate, col };
-          if (!isValid(board, placed))
-            continue;
-          const dropped = { ...placed, row: hardDropRow(board, placed) };
-          const score = evalBoard(board, dropped);
-          if (score < bestScore) {
-            bestScore = score;
-            bestCol = col;
-            bestRot = rot;
-          }
-        }
-      }
-      if (bestRot !== piece.rotation) {
-        inp.ROTATE_CW = true;
-      } else if (bestCol < piece.col) {
-        inp.MOVE_LEFT = true;
-      } else if (bestCol > piece.col) {
-        inp.MOVE_RIGHT = true;
-      } else {
-        inp.SOFT_DROP = true;
-      }
-      return inp;
-    }
-  };
-  function evalBoard(board, piece) {
-    const scratch = board.map((r) => [...r]);
-    const color = TETROMINO_COLORS[piece.type];
-    for (const [r, c] of TETROMINO_SHAPES[piece.type][piece.rotation].map(([r2, c2]) => [piece.row + r2, piece.col + c2])) {
-      if (r >= 0 && r < BOARD_ROWS && c >= 0 && c < BOARD_COLS)
-        scratch[r][c] = color;
-    }
-    let aggregateHeight = 0;
-    let holes = 0;
-    let bumpiness = 0;
-    const heights = [];
-    for (let c = 0; c < BOARD_COLS; c++) {
-      let h = 0;
-      for (let r = 0; r < BOARD_ROWS; r++) {
-        if (scratch[r][c] !== null) {
-          h = BOARD_ROWS - r;
-          break;
-        }
-      }
-      heights.push(h);
-      aggregateHeight += h;
-      let inBlock = false;
-      for (let r = 0; r < BOARD_ROWS; r++) {
-        if (scratch[r][c] !== null)
-          inBlock = true;
-        else if (inBlock)
-          holes++;
-      }
-    }
-    for (let c = 0; c < BOARD_COLS - 1; c++)
-      bumpiness += Math.abs(heights[c] - heights[c + 1]);
-    const completedLines = scratch.filter((row) => row.every((cell) => cell !== null)).length;
-    return aggregateHeight * 0.5 + holes * 8 + bumpiness * 0.3 - completedLines * 5;
-  }
 
   // src/games/tetromino/input.ts
   var actions = {
@@ -1179,8 +1100,8 @@
   var PANEL_POSITIONS = [
     { x: 20, y: 20 },
     { x: 420, y: 20 },
-    { x: 20, y: 330 },
-    { x: 420, y: 330 }
+    { x: 20, y: 420 },
+    { x: 420, y: 420 }
   ];
   function drawCell(ctx, x, y, color, size = CELL) {
     ctx.fillStyle = color;
@@ -1303,8 +1224,10 @@
   }
   var renderer = {
     render(ctx, state, myPlayerId) {
+      const width = ctx.canvas.width;
+      const height = ctx.canvas.height;
       ctx.fillStyle = "#0a0a0a";
-      ctx.fillRect(0, 0, 800, 600);
+      ctx.fillRect(0, 0, width, height);
       for (let i = 0; i < state.players.length && i < 4; i++) {
         const player = state.players[i];
         const pos = PANEL_POSITIONS[i];
@@ -1312,11 +1235,11 @@
       }
       if (state.phase === "game_over") {
         ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillRect(0, 0, 800, 600);
+        ctx.fillRect(0, 0, width, height);
         ctx.fillStyle = "#fff";
         ctx.font = "bold 36px monospace";
         ctx.textAlign = "center";
-        ctx.fillText("GAME OVER", 400, 290);
+        ctx.fillText("GAME OVER", width / 2, height / 2);
         ctx.textAlign = "left";
       }
     }
@@ -1336,27 +1259,27 @@
     isGameOver,
     getWinner,
     renderer,
-    aiAdapter,
+    canvasSize: { width: 800, height: 800 },
     howToPlay: `
-    <h3>Controls</h3>
-    <ul>
-      <li>\u2190 \u2192 Arrow keys / A D \u2014 Move</li>
-      <li>\u2191 Arrow / W \u2014 Rotate clockwise</li>
-      <li>Z \u2014 Rotate counter-clockwise</li>
-      <li>\u2193 Arrow / S \u2014 Soft drop</li>
-      <li>Space \u2014 Hard drop</li>
-      <li>Shift / C \u2014 Hold piece</li>
-    </ul>
-    <h3>Rules</h3>
-    <p>Clear 2+ lines at once to send garbage lines to all other players.
-    Last player standing wins. If you fill your board to the top, you're out!</p>
-    <h3>Garbage</h3>
-    <ul>
-      <li>2 lines \u2192 1 garbage line sent</li>
-      <li>3 lines \u2192 2 garbage lines sent</li>
-      <li>4 lines (Tetromino) \u2192 4 garbage lines sent</li>
-    </ul>
-  `,
+     <h3>Controls</h3>
+     <ul>
+       <li>\u2190 \u2192 Arrow keys / A D \u2014 Move</li>
+       <li>\u2191 Arrow / W \u2014 Rotate clockwise</li>
+       <li>Z \u2014 Rotate counter-clockwise</li>
+       <li>\u2193 Arrow / S \u2014 Soft drop</li>
+       <li>Space \u2014 Hard drop</li>
+       <li>Shift / C \u2014 Hold piece</li>
+     </ul>
+     <h3>Rules</h3>
+     <p>Clear 2+ lines at once to send garbage lines to all other players.
+     Last player standing wins. If you fill your board to the top, you're out!</p>
+     <h3>Garbage</h3>
+     <ul>
+       <li>2 lines \u2192 1 garbage line sent</li>
+       <li>3 lines \u2192 2 garbage lines sent</li>
+       <li>4 lines (Tetromino) \u2192 4 garbage lines sent</li>
+     </ul>
+   `,
     settings: [
       {
         key: "startLevel",

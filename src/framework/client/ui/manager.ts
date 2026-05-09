@@ -78,18 +78,22 @@ export class UIManager {
         this.renderUI();
         break;
 
-      case 'game_start':
-        this.currentGame = gameRegistry.get(msg.gameId) ?? null;
-        if (this.currentGame) {
-          this.input.init(this.currentGame.actions, this.currentGame.defaultActionMap);
-          this.input.attach();
-          if (this.currentGame.renderer.init) this.currentGame.renderer.init(this.canvas);
-        }
-        this.myPlayerId = msg.playerId;
-        this.stopRoomListPolling();
-        this.setScreen('game');
-        this.startGameLoop();
-        break;
+       case 'game_start':
+         this.currentGame = gameRegistry.get(msg.gameId) ?? null;
+         if (this.currentGame) {
+           if (this.currentGame.canvasSize) {
+             this.canvas.width = this.currentGame.canvasSize.width;
+             this.canvas.height = this.currentGame.canvasSize.height;
+           }
+           this.input.init(this.currentGame.actions, this.currentGame.defaultActionMap);
+           this.input.attach();
+           if (this.currentGame.renderer.init) this.currentGame.renderer.init(this.canvas);
+         }
+         this.myPlayerId = msg.playerId;
+         this.stopRoomListPolling();
+         this.setScreen('game');
+         this.startGameLoop();
+         break;
 
       case 'state':
         this.latestState = msg.state;

@@ -3,7 +3,7 @@ import type { TetrominoState, PlayerBoard, Tetromino } from './state';
 import { BOARD_COLS, BOARD_ROWS, TETROMINO_SHAPES, TETROMINO_COLORS } from './constants';
 import { PLAYER_COLORS } from '../../framework/shared/constants';
 
-// Layout: 4 panels in a 2×2 grid on 800×600
+// Layout: 4 panels in a 2×2 grid on 800×800
 const CELL = 18;
 const BOARD_W = BOARD_COLS * CELL;  // 180
 const BOARD_H = BOARD_ROWS * CELL;  // 360
@@ -15,8 +15,8 @@ const PANEL_H = BOARD_H + 40; // label + board
 const PANEL_POSITIONS = [
   { x: 20,  y: 20  },
   { x: 420, y: 20  },
-  { x: 20,  y: 330 },
-  { x: 420, y: 330 },
+  { x: 20,  y: 420 },
+  { x: 420, y: 420 },
 ];
 
 function drawCell(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, size: number = CELL): void {
@@ -160,9 +160,12 @@ function drawPanel(
 
 export const renderer: GameRenderer<TetrominoState> = {
   render(ctx: CanvasRenderingContext2D, state: TetrominoState, myPlayerId: PlayerId): void {
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+
     // Background
     ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, 800, 600);
+    ctx.fillRect(0, 0, width, height);
 
     for (let i = 0; i < state.players.length && i < 4; i++) {
       const player = state.players[i];
@@ -173,11 +176,11 @@ export const renderer: GameRenderer<TetrominoState> = {
     // Game over overlay
     if (state.phase === 'game_over') {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, 800, 600);
+      ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 36px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('GAME OVER', 400, 290);
+      ctx.fillText('GAME OVER', width / 2, height / 2);
       ctx.textAlign = 'left';
     }
   },

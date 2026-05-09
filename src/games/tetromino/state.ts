@@ -27,6 +27,12 @@ export interface PlayerBoard extends BasePlayer {
   pendingGarbage: number;        // garbage lines waiting to be added
   lastAiActionTick: number;      // last tick when AI changed its input
   lastAiInput: TetrominoInput;   // last input provided by AI
+  aiMoveDelay: number;           // ticks to wait before next movement action
+  aiDropDelay: number;           // ticks to wait before hard dropping
+  aiMoveTimer: number;           // countdown for move/rotate delay
+  aiDropTimer: number;           // countdown for drop delay
+  aiTargetCol: number;           // target column from last decision
+  aiTargetRot: number;           // target rotation from last decision
 }
 
 export interface TetrominoState extends BaseGameState {
@@ -82,6 +88,12 @@ export function createInitialState(config: GameConfig): TetrominoState {
         ROTATE_CCW: false,
         HOLD: false,
       },
+      aiMoveDelay: 8,
+      aiDropDelay: 20,
+      aiMoveTimer: 0,
+      aiDropTimer: 0,
+      aiTargetCol: 3,
+      aiTargetRot: 0,
     };
   });
 

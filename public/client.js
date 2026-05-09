@@ -814,7 +814,13 @@
           ROTATE_CW: false,
           ROTATE_CCW: false,
           HOLD: false
-        }
+        },
+        aiMoveDelay: 8,
+        aiDropDelay: 20,
+        aiMoveTimer: 0,
+        aiDropTimer: 0,
+        aiTargetCol: 3,
+        aiTargetRot: 0
       };
     });
     return {
@@ -982,6 +988,10 @@
           continue;
         }
         player.current = piece;
+        if (player.isAI) {
+          player.aiMoveTimer = 0;
+          player.aiDropTimer = player.aiDropDelay;
+        }
         continue;
       }
       const gravitySpeed = BASE_GRAVITY + (player.level - 1) * GRAVITY_INCREMENT;
@@ -1029,6 +1039,10 @@
             events.push({ type: "player_dead", playerId: player.id });
             player.current = null;
             continue;
+          }
+          if (player.isAI) {
+            player.aiMoveTimer = 0;
+            player.aiDropTimer = player.aiDropDelay;
           }
         }
       } else {
@@ -1090,30 +1104,49 @@
         return inp;
       const piece = player.current;
       const board = player.board;
-      let bestScore = Infinity;
-      let bestCol = piece.col;
-      let bestRot = piece.rotation;
-      for (let rot = 0; rot < 4; rot++) {
-        const candidate = { ...piece, rotation: rot };
-        for (let col = 0; col < BOARD_COLS; col++) {
-          const placed = { ...candidate, col };
-          if (!isValid(board, placed))
-            continue;
-          const dropped = { ...placed, row: hardDropRow(board, placed) };
-          const score = evalBoard(board, dropped);
-          if (score < bestScore) {
-            bestScore = score;
-            bestCol = col;
-            bestRot = rot;
+      const ai = player;
+      if (state.tick - ai.lastAiActionTick >= 10) {
+        let bestScore = Infinity;
+        let bestCol = piece.col;
+        let bestRot = piece.rotation;
+        for (let rot = 0; rot < 4; rot++) {
+          const candidate = { ...piece, rotation: rot };
+          for (let col = 0; col < BOARD_COLS; col++) {
+            const placed = { ...candidate, col };
+            if (!isValid(board, placed))
+              continue;
+            const dropped = { ...placed, row: hardDropRow(board, placed) };
+            const score = evalBoard(board, dropped);
+            if (score < bestScore) {
+              bestScore = score;
+              bestCol = col;
+              bestRot = rot;
+            }
           }
         }
+        const changed = bestCol !== ai.aiTargetCol || bestRot !== ai.aiTargetRot;
+        ai.aiTargetCol = bestCol;
+        ai.aiTargetRot = bestRot;
+        ai.lastAiActionTick = state.tick;
+        if (changed) {
+          ai.aiMoveTimer = 0;
+          ai.aiDropTimer = ai.aiDropDelay;
+        }
       }
-      if (bestRot !== piece.rotation) {
+      ai.aiMoveTimer = Math.max(0, ai.aiMoveTimer - 1);
+      if (ai.aiMoveTimer > 0)
+        return inp;
+      if (piece.rotation !== ai.aiTargetRot) {
         inp.ROTATE_CW = true;
-      } else if (bestCol < piece.col) {
+        ai.aiMoveTimer = ai.aiMoveDelay;
+      } else if (ai.aiTargetCol < piece.col) {
         inp.MOVE_LEFT = true;
-      } else if (bestCol > piece.col) {
+        ai.aiMoveTimer = ai.aiMoveDelay;
+      } else if (ai.aiTargetCol > piece.col) {
         inp.MOVE_RIGHT = true;
+        ai.aiMoveTimer = ai.aiMoveDelay;
+      } else if (ai.aiDropTimer > 0) {
+        ai.aiDropTimer--;
       } else {
         inp.HARD_DROP = true;
       }

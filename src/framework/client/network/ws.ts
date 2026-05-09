@@ -6,24 +6,24 @@ export class GameWebSocket {
   private ws: WebSocket | null = null;
   private queue: ClientMessage[] = [];
   private handlers: MessageHandler[] = [];
-  private url: string;
+  private primaryUrl: string;
   private reconnectDelay = 1000;
+  private fallbackUsed = false;
 
   constructor(url?: string) {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    this.url = url ?? `${proto}://${location.host}/ws`;
+    this.primaryUrl = url ?? `${proto}://${location.host}/ws`;
   }
 
   connect(): void {
-    try {
-      this.ws = new WebSocket(this.url);
-    } catch {
-      // Try fallback
-      this.ws = new WebSocket(`ws://localhost:3000/ws`);
-    }
+    const urlToTry = this.fallbackUsed ? 'ws://localhost:3000/ws' : this.primaryUrl;
+    console.log(`[WebSocket] Attempting to connect to ${urlToTry}...`);
+    this.ws = new WebSocket(urlToTry);
 
     this.ws.onopen = () => {
+      console.log(`[WebSocket] Connected to ${urlToTry}`);
       this.reconnectDelay = 1000;
+      this.fallbackUsed = false;
       for (const msg of this.queue) this.rawSend(msg);
       this.queue = [];
     };
@@ -34,9 +34,22 @@ export class GameWebSocket {
       for (const h of this.handlers) h(msg);
     };
 
-    this.ws.onclose = () => {
-      setTimeout(() => this.connect(), this.reconnectDelay);
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10000);
+    this.ws.onerror = () => {
+      console.error(`[WebSocket] Connection error on ${urlToTry}`);
+    };
+
+    this.ws.onclose = (event) => {
+      console.warn(`[WebSocket] Connection closed. Code: ${event.code}, Reason: ${event.reason || 'None'}`);
+
+      if (!this.fallbackUsed && urlToTry !== 'ws://localhost:3000/ws') {
+        console.log(`[WebSocket] Primary connection failed. Attempting fallback to localhost:3000...`);
+        this.fallbackUsed = true;
+        this.connect();
+      } else {
+        console.log(`[WebSocket] Retrying in ${this.reconnectDelay}ms...`);
+        setTimeout(() => this.connect(), this.reconnectDelay);
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10000);
+      }
     };
   }
 

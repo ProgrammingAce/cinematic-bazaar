@@ -20,20 +20,21 @@
     ws = null;
     queue = [];
     handlers = [];
-    url;
+    primaryUrl;
     reconnectDelay = 1e3;
+    fallbackUsed = false;
     constructor(url) {
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      this.url = url ?? `${proto}://${location.host}/ws`;
+      this.primaryUrl = url ?? `${proto}://${location.host}/ws`;
     }
     connect() {
-      try {
-        this.ws = new WebSocket(this.url);
-      } catch {
-        this.ws = new WebSocket(`ws://localhost:3000/ws`);
-      }
+      const urlToTry = this.fallbackUsed ? "ws://localhost:3000/ws" : this.primaryUrl;
+      console.log(`[WebSocket] Attempting to connect to ${urlToTry}...`);
+      this.ws = new WebSocket(urlToTry);
       this.ws.onopen = () => {
+        console.log(`[WebSocket] Connected to ${urlToTry}`);
         this.reconnectDelay = 1e3;
+        this.fallbackUsed = false;
         for (const msg of this.queue)
           this.rawSend(msg);
         this.queue = [];
@@ -48,9 +49,20 @@
         for (const h of this.handlers)
           h(msg);
       };
-      this.ws.onclose = () => {
-        setTimeout(() => this.connect(), this.reconnectDelay);
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 1e4);
+      this.ws.onerror = () => {
+        console.error(`[WebSocket] Connection error on ${urlToTry}`);
+      };
+      this.ws.onclose = (event) => {
+        console.warn(`[WebSocket] Connection closed. Code: ${event.code}, Reason: ${event.reason || "None"}`);
+        if (!this.fallbackUsed && urlToTry !== "ws://localhost:3000/ws") {
+          console.log(`[WebSocket] Primary connection failed. Attempting fallback to localhost:3000...`);
+          this.fallbackUsed = true;
+          this.connect();
+        } else {
+          console.log(`[WebSocket] Retrying in ${this.reconnectDelay}ms...`);
+          setTimeout(() => this.connect(), this.reconnectDelay);
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, 1e4);
+        }
       };
     }
     send(msg) {

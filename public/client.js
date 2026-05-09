@@ -764,26 +764,43 @@
   }
   function createInitialState(config) {
     const seed = Date.now() % 1e6;
-    const players = config.playerIds.map((id, i) => ({
-      id,
-      name: config.playerNames[i],
-      color: config.playerColors[i],
-      score: 0,
-      isAI: config.aiSlots.includes(id),
-      connected: true,
-      board: emptyBoard(),
-      current: spawnPiece(pickPiece(seed + id * 100)),
-      next: pickPiece(seed + id * 100 + 1),
-      held: null,
-      holdUsed: false,
-      gravityAccum: 0,
-      lockTimer: 0,
-      lockActive: false,
-      linesCleared: 0,
-      level: 1,
-      dead: false,
-      pendingGarbage: 0
-    }));
+    const colors = ["yellow", "white", "red", "blue", "green", "orange", "magenta", "cyan"];
+    const players = [...config.playerIds, ...config.aiSlots].map((id) => {
+      const isAI = config.aiSlots.includes(id);
+      const humanIndex = config.playerIds.indexOf(id);
+      const name = isAI ? `AI Player ${id}` : config.playerNames[humanIndex];
+      const color = isAI ? colors[id % colors.length] : config.playerColors[humanIndex];
+      return {
+        id,
+        name,
+        color,
+        score: 0,
+        isAI,
+        connected: true,
+        board: emptyBoard(),
+        current: spawnPiece(pickPiece(seed + id * 100)),
+        next: pickPiece(seed + id * 100 + 1),
+        held: null,
+        holdUsed: false,
+        gravityAccum: 0,
+        lockTimer: 0,
+        lockActive: false,
+        linesCleared: 0,
+        level: 1,
+        dead: false,
+        pendingGarbage: 0,
+        lastAiActionTick: 0,
+        lastAiInput: {
+          MOVE_LEFT: false,
+          MOVE_RIGHT: false,
+          SOFT_DROP: false,
+          HARD_DROP: false,
+          ROTATE_CW: false,
+          ROTATE_CCW: false,
+          HOLD: false
+        }
+      };
+    });
     return {
       tick: 0,
       phase: "playing",
@@ -866,6 +883,13 @@
       if (player.current === null)
         continue;
       const inp = inputs.get(player.id) ?? {};
+      if (player.isAI) {
+        const changed = inp.MOVE_LEFT !== player.lastAiInput.MOVE_LEFT || inp.MOVE_RIGHT !== player.lastAiInput.MOVE_RIGHT || inp.SOFT_DROP !== player.lastAiInput.SOFT_DROP || inp.HARD_DROP !== player.lastAiInput.HARD_DROP || inp.ROTATE_CW !== player.lastAiInput.ROTATE_CW || inp.ROTATE_CCW !== player.lastAiInput.ROTATE_CCW || inp.HOLD !== player.lastAiInput.HOLD;
+        if (changed) {
+          player.lastAiActionTick = state.tick;
+          player.lastAiInput = { ...inp };
+        }
+      }
       const board = player.board;
       let piece = { ...player.current };
       if (player.pendingGarbage > 0) {
@@ -1048,6 +1072,9 @@
       };
       if (!player || !player.current || player.dead)
         return inp;
+      if (state.tick - player.lastAiActionTick < 10) {
+        return player.lastAiInput;
+      }
       const piece = player.current;
       const board = player.board;
       let bestScore = Infinity;
@@ -1075,7 +1102,7 @@
       } else if (bestCol > piece.col) {
         inp.MOVE_RIGHT = true;
       } else {
-        inp.HARD_DROP = true;
+        inp.SOFT_DROP = true;
       }
       return inp;
     }

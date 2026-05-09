@@ -96,6 +96,23 @@ export function tick(
     if (player.current === null) continue;
 
     const inp = inputs.get(player.id) ?? {} as TetrominoInput;
+
+    if (player.isAI) {
+      const changed = 
+        inp.MOVE_LEFT !== player.lastAiInput.MOVE_LEFT ||
+        inp.MOVE_RIGHT !== player.lastAiInput.MOVE_RIGHT ||
+        inp.SOFT_DROP !== player.lastAiInput.SOFT_DROP ||
+        inp.HARD_DROP !== player.lastAiInput.HARD_DROP ||
+        inp.ROTATE_CW !== player.lastAiInput.ROTATE_CW ||
+        inp.ROTATE_CCW !== player.lastAiInput.ROTATE_CCW ||
+        inp.HOLD !== player.lastAiInput.HOLD;
+      
+      if (changed) {
+        player.lastAiActionTick = state.tick;
+        player.lastAiInput = { ...inp };
+      }
+    }
+
     const board = player.board;
     let piece = { ...player.current };
 
@@ -271,6 +288,11 @@ export const aiAdapter = {
     };
     if (!player || !player.current || player.dead) return inp;
 
+    // Throttle AI decisions: only change input every 10 ticks
+    if (state.tick - player.lastAiActionTick < 10) {
+      return player.lastAiInput;
+    }
+
     // Simple heuristic: find best column via aggregate height minimization
     const piece = player.current;
     const board = player.board;
@@ -299,7 +321,8 @@ export const aiAdapter = {
     } else if (bestCol > piece.col) {
       inp.MOVE_RIGHT = true;
     } else {
-      inp.HARD_DROP = true;
+      // Use soft drop instead of hard drop to move more naturally
+      inp.SOFT_DROP = true;
     }
 
     return inp;

@@ -1074,6 +1074,86 @@
       return null;
     return sorted[0].id;
   }
+  var aiAdapter = {
+    computeInput(state, playerId) {
+      const player = state.players.find((p) => p.id === playerId);
+      const inp = {
+        MOVE_LEFT: false,
+        MOVE_RIGHT: false,
+        SOFT_DROP: false,
+        HARD_DROP: false,
+        ROTATE_CW: false,
+        ROTATE_CCW: false,
+        HOLD: false
+      };
+      if (!player || !player.current || player.dead)
+        return inp;
+      const piece = player.current;
+      const board = player.board;
+      let bestScore = Infinity;
+      let bestCol = piece.col;
+      let bestRot = piece.rotation;
+      for (let rot = 0; rot < 4; rot++) {
+        const candidate = { ...piece, rotation: rot };
+        for (let col = 0; col < BOARD_COLS; col++) {
+          const placed = { ...candidate, col };
+          if (!isValid(board, placed))
+            continue;
+          const dropped = { ...placed, row: hardDropRow(board, placed) };
+          const score = evalBoard(board, dropped);
+          if (score < bestScore) {
+            bestScore = score;
+            bestCol = col;
+            bestRot = rot;
+          }
+        }
+      }
+      if (bestRot !== piece.rotation) {
+        inp.ROTATE_CW = true;
+      } else if (bestCol < piece.col) {
+        inp.MOVE_LEFT = true;
+      } else if (bestCol > piece.col) {
+        inp.MOVE_RIGHT = true;
+      } else {
+        inp.HARD_DROP = true;
+      }
+      return inp;
+    }
+  };
+  function evalBoard(board, piece) {
+    const scratch = board.map((r) => [...r]);
+    const color = TETROMINO_COLORS[piece.type];
+    for (const [r, c] of TETROMINO_SHAPES[piece.type][piece.rotation].map(([r2, c2]) => [piece.row + r2, piece.col + c2])) {
+      if (r >= 0 && r < BOARD_ROWS && c >= 0 && c < BOARD_COLS)
+        scratch[r][c] = color;
+    }
+    let aggregateHeight = 0;
+    let holes = 0;
+    let bumpiness = 0;
+    const heights = [];
+    for (let c = 0; c < BOARD_COLS; c++) {
+      let h = 0;
+      for (let r = 0; r < BOARD_ROWS; r++) {
+        if (scratch[r][c] !== null) {
+          h = BOARD_ROWS - r;
+          break;
+        }
+      }
+      heights.push(h);
+      aggregateHeight += h;
+      let inBlock = false;
+      for (let r = 0; r < BOARD_ROWS; r++) {
+        if (scratch[r][c] !== null)
+          inBlock = true;
+        else if (inBlock)
+          holes++;
+      }
+    }
+    for (let c = 0; c < BOARD_COLS - 1; c++)
+      bumpiness += Math.abs(heights[c] - heights[c + 1]);
+    const completedLines = scratch.filter((row) => row.every((cell) => cell !== null)).length;
+    return aggregateHeight * 0.51 + holes * 0.75 + bumpiness * 0.35 - completedLines * 3;
+  }
 
   // src/games/tetromino/input.ts
   var actions = {
@@ -1270,6 +1350,7 @@
     tick,
     isGameOver,
     getWinner,
+    aiAdapter,
     renderer,
     canvasSize: { width: 800, height: 800 },
     howToPlay: `

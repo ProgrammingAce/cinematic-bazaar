@@ -106,7 +106,6 @@ export function tick(
         inp.ROTATE_CW !== player.lastAiInput.ROTATE_CW ||
         inp.ROTATE_CCW !== player.lastAiInput.ROTATE_CCW ||
         inp.HOLD !== player.lastAiInput.HOLD;
-      
       if (changed) {
         player.lastAiActionTick = state.tick;
         player.lastAiInput = { ...inp };
@@ -288,16 +287,9 @@ export const aiAdapter = {
     };
     if (!player || !player.current || player.dead) return inp;
 
-    // Throttle AI decisions: only change input every 10 ticks
-    if (state.tick - player.lastAiActionTick < 10) {
-      return player.lastAiInput;
-    }
-
-    // Simple heuristic: find best column via aggregate height minimization
     const piece = player.current;
     const board = player.board;
 
-    // Try all rotations and columns, pick lowest aggregate height
     let bestScore = Infinity;
     let bestCol = piece.col;
     let bestRot = piece.rotation;
@@ -321,8 +313,7 @@ export const aiAdapter = {
     } else if (bestCol > piece.col) {
       inp.MOVE_RIGHT = true;
     } else {
-      // Use soft drop instead of hard drop to move more naturally
-      inp.SOFT_DROP = true;
+      inp.HARD_DROP = true;
     }
 
     return inp;
@@ -330,7 +321,6 @@ export const aiAdapter = {
 };
 
 function evalBoard(board: (string | null)[][], piece: Tetromino): number {
-  // Simulate locking the piece onto a scratch board
   const scratch = board.map(r => [...r]);
   const color = TETROMINO_COLORS[piece.type];
   for (const [r, c] of TETROMINO_SHAPES[piece.type][piece.rotation].map(([r2, c2]) => [piece.row + r2, piece.col + c2])) {
@@ -349,7 +339,6 @@ function evalBoard(board: (string | null)[][], piece: Tetromino): number {
     }
     heights.push(h);
     aggregateHeight += h;
-    // Count holes
     let inBlock = false;
     for (let r = 0; r < BOARD_ROWS; r++) {
       if (scratch[r][c] !== null) inBlock = true;
@@ -359,8 +348,7 @@ function evalBoard(board: (string | null)[][], piece: Tetromino): number {
 
   for (let c = 0; c < BOARD_COLS - 1; c++) bumpiness += Math.abs(heights[c] - heights[c + 1]);
 
-  // Complete lines bonus
   const completedLines = scratch.filter(row => row.every(cell => cell !== null)).length;
 
-  return aggregateHeight * 0.5 + holes * 8 + bumpiness * 0.3 - completedLines * 5;
+  return aggregateHeight * 0.51 + holes * 0.75 + bumpiness * 0.35 - completedLines * 3.0;
 }

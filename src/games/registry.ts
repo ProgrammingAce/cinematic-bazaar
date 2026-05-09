@@ -8,9 +8,11 @@
  */
 import type { GameDefinition } from '../framework/shared/types';
 import tetrominoGame from './tetromino/definition';
+import warlordsGame from './warlords/definition';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const GAMES: GameDefinition<any, any>[] = [
   tetrominoGame,
+  warlordsGame,
   // Add new games here ↓
 ];

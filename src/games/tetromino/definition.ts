@@ -9,7 +9,7 @@ import type { TetrominoInput } from './input';
 const definition: GameDefinition<TetrominoState, TetrominoInput> = {
   id: 'tetromino',
   name: 'Tetromino Battle',
-  description: 'Competitive 4-player Tetris — clear lines to send garbage to your opponents.',
+  description: 'Competitive 4-player Tetromino — clear lines to send garbage to your opponents.',
   minPlayers: 1,
   maxPlayers: 4,
   actions,
@@ -37,7 +37,7 @@ const definition: GameDefinition<TetrominoState, TetrominoInput> = {
     <ul>
       <li>2 lines → 1 garbage line sent</li>
       <li>3 lines → 2 garbage lines sent</li>
-      <li>4 lines (Tetris) → 4 garbage lines sent</li>
+      <li>4 lines (Tetromino) → 4 garbage lines sent</li>
     </ul>
   `,
   settings: [

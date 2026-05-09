@@ -33,7 +33,7 @@ Open `http://localhost:3000`. The Tetromino Battle example game is pre-registere
 
 ## Included example: Tetromino Battle
 
-A 4-player competitive Tetris. Clear 2+ lines at once to send garbage to your opponents. Last board standing wins.
+A 4-player competitive Tetromino. Clear 2+ lines at once to send garbage to your opponents. Last board standing wins.
 
 Located at `src/games/tetromino/`. It exercises the full framework surface — physics-driven state, deterministic PRNG, AI heuristics, multi-panel canvas rendering, and custom game events — making it the best reference when building a new game.
 

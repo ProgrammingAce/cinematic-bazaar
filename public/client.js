@@ -1,5 +1,20 @@
 "use strict";
 (() => {
+  // src/framework/shared/constants.ts
+  var CANVAS_WIDTH = 800;
+  var CANVAS_HEIGHT = 600;
+  var TICK_MS = 1e3 / 60;
+  var PLAYER_COLORS = {
+    0: "#ffff00",
+    1: "#ffffff",
+    2: "#ff4444",
+    3: "#4488ff",
+    4: "#44ff88",
+    5: "#ff8844",
+    6: "#ff44ff",
+    7: "#44ffff"
+  };
+
   // src/framework/client/network/ws.ts
   var GameWebSocket = class {
     ws = null;
@@ -149,8 +164,8 @@
     constructor(root2) {
       this.root = root2;
       this.canvas = document.createElement("canvas");
-      this.canvas.width = 800;
-      this.canvas.height = 600;
+      this.canvas.width = CANVAS_WIDTH;
+      this.canvas.height = CANVAS_HEIGHT;
       this.ctx = this.canvas.getContext("2d");
       this.socket = new GameWebSocket();
     }
@@ -216,15 +231,20 @@
       }
     }
     startGameLoop() {
+      let lastSentInput = "";
       const loop = () => {
         if (this.screen !== "game")
           return;
         if (this.latestState && this.currentGame) {
           const input = this.input.getInput();
-          this.socket.send({ type: "input", tick: this.latestState.tick, input });
+          const serialized = JSON.stringify(input);
+          if (serialized !== lastSentInput) {
+            this.socket.send({ type: "input", tick: this.latestState.tick, input });
+            lastSentInput = serialized;
+          }
           this.input.flush();
           this.ctx.fillStyle = "#000";
-          this.ctx.fillRect(0, 0, 800, 600);
+          this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
           this.currentGame.renderer.render(this.ctx, this.latestState, this.myPlayerId);
         }
         this.rafId = requestAnimationFrame(loop);
@@ -374,6 +394,10 @@
         this.socket.send({ type: "join_room", code });
       };
       const errorEl = this.errorMessage ? el("p", { className: "error-msg" }, [this.errorMessage]) : null;
+      const howToPlayBtn = def?.howToPlay ? el("button", {
+        className: "btn-secondary",
+        onclick: () => this.showHowToPlay(def.howToPlay)
+      }, ["? How to Play"]) : null;
       this.root.appendChild(el("div", { className: "screen browser" }, [
         el("div", { className: "browser-header" }, [
           el("button", {
@@ -384,10 +408,13 @@
             }
           }, ["\u2190 Back"]),
           el("h1", {}, [def?.name ?? "Game"]),
-          el("button", {
-            className: "btn-primary",
-            onclick: () => this.socket.send({ type: "create_room", gameId: this.browsedGameId })
-          }, ["+ Create Room"])
+          el("div", { className: "browser-header-actions" }, [
+            ...howToPlayBtn ? [howToPlayBtn] : [],
+            el("button", {
+              className: "btn-primary",
+              onclick: () => this.socket.send({ type: "create_room", gameId: this.browsedGameId })
+            }, ["+ Create Room"])
+          ])
         ]),
         ...errorEl ? [errorEl] : [],
         el("div", { className: "room-list" }, [
@@ -417,7 +444,7 @@
         const meBadge = isMe ? el("span", { className: "badge badge-me" }, ["YOU"]) : null;
         const readyBadge = p.id === room.host ? el("span", { className: "badge badge-neutral" }, ["\u2014"]) : el("span", { className: `badge ${p.ready ? "badge-ready" : "badge-waiting"}` }, [p.ready ? "\u2713 Ready" : "\u2026 Waiting"]);
         return el("div", { className: `player-row${isMe ? " player-row-me" : ""}` }, [
-          el("span", { className: "player-swatch", style: `background:${PLAYER_COLORS[p.id]}` }, []),
+          el("span", { className: "player-swatch", style: `background:${PLAYER_COLORS2[p.id]}` }, []),
           el("span", { className: "player-name" }, [p.name]),
           el("span", { className: "player-badges" }, [
             ...hostBadge ? [hostBadge] : [],
@@ -475,8 +502,68 @@
         ]),
         ...errorEl ? [errorEl] : [],
         el("div", { className: "player-list" }, playerRows),
+        ...isHost && def?.settings?.length ? [this.renderSettings(def.settings, room.gameSettings)] : [],
         el("div", { className: "lobby-actions" }, actions2)
       ]));
+    }
+    renderSettings(defs, current) {
+      const rows = defs.map((s) => {
+        let control;
+        if (s.type === "range") {
+          const input = document.createElement("input");
+          input.type = "range";
+          input.min = String(s.min ?? 0);
+          input.max = String(s.max ?? 100);
+          input.step = String(s.step ?? 1);
+          input.value = String(current[s.key] ?? s.default);
+          const valueLabel = document.createElement("span");
+          valueLabel.className = "setting-value";
+          valueLabel.textContent = input.value;
+          input.addEventListener("input", () => {
+            valueLabel.textContent = input.value;
+          });
+          input.addEventListener("change", () => {
+            this.socket.send({ type: "update_settings", settings: { [s.key]: Number(input.value) } });
+          });
+          const wrap = document.createElement("div");
+          wrap.className = "setting-range-wrap";
+          wrap.appendChild(input);
+          wrap.appendChild(valueLabel);
+          control = wrap;
+        } else if (s.type === "toggle") {
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.className = "setting-toggle";
+          input.checked = Boolean(current[s.key] ?? s.default);
+          input.addEventListener("change", () => {
+            this.socket.send({ type: "update_settings", settings: { [s.key]: input.checked } });
+          });
+          control = input;
+        } else {
+          const select = document.createElement("select");
+          select.className = "setting-select";
+          for (const opt of s.options ?? []) {
+            const o = document.createElement("option");
+            o.value = opt;
+            o.textContent = opt;
+            if (opt === String(current[s.key] ?? s.default))
+              o.selected = true;
+            select.appendChild(o);
+          }
+          select.addEventListener("change", () => {
+            this.socket.send({ type: "update_settings", settings: { [s.key]: select.value } });
+          });
+          control = select;
+        }
+        return el("div", { className: "setting-row" }, [
+          el("label", { className: "setting-label" }, [s.label]),
+          control
+        ]);
+      });
+      return el("div", { className: "settings-panel" }, [
+        el("div", { className: "section-label" }, ["Game Settings"]),
+        ...rows
+      ]);
     }
     renderGameOver() {
       const data = this.gameOverData;
@@ -493,7 +580,7 @@
       const scoreRows = data ? Object.entries(data.scores).sort(([, a], [, b]) => b - a).map(([pid, score]) => {
         const player = room?.players.find((p) => p.id === Number(pid));
         return el("div", { className: "score-row" }, [
-          el("span", { className: "player-swatch", style: `background:${PLAYER_COLORS[Number(pid)]}` }, []),
+          el("span", { className: "player-swatch", style: `background:${PLAYER_COLORS2[Number(pid)]}` }, []),
           el("span", {}, [player?.name ?? `Player ${Number(pid) + 1}`]),
           el("span", { className: "score-value" }, [String(score)])
         ]);
@@ -528,11 +615,28 @@
         ])
       ]));
     }
+    showHowToPlay(html) {
+      const overlay = el("div", { className: "htp-overlay" }, [
+        el("div", { className: "htp-dialog" }, [
+          el("div", { className: "htp-header" }, [
+            el("h2", {}, ["How to Play"]),
+            el("button", { className: "btn-back", onclick: () => overlay.remove() }, ["\u2715 Close"])
+          ]),
+          (() => {
+            const body = document.createElement("div");
+            body.className = "htp-body";
+            body.innerHTML = html;
+            return body;
+          })()
+        ])
+      ]);
+      this.root.appendChild(overlay);
+    }
     getStoredName() {
       return localStorage.getItem("playerName") ?? "Player";
     }
   };
-  var PLAYER_COLORS = {
+  var PLAYER_COLORS2 = {
     0: "#ffff00",
     1: "#ffffff",
     2: "#ff4444",
@@ -893,6 +997,10 @@
         targets[i].pendingGarbage += perTarget + (i === 0 ? extra : 0);
       }
     }
+    const aliveAfter = next.players.filter((p) => !p.dead);
+    const gameEnded = next.players.length === 1 ? aliveAfter.length === 0 : aliveAfter.length <= 1;
+    if (gameEnded)
+      next.phase = "game_over";
     return { state: next, events };
   }
   function pickNextPiece(state, player, currentTick) {
@@ -1025,19 +1133,6 @@
     }
   };
 
-  // src/framework/shared/constants.ts
-  var TICK_MS = 1e3 / 60;
-  var PLAYER_COLORS2 = {
-    0: "#ffff00",
-    1: "#ffffff",
-    2: "#ff4444",
-    3: "#4488ff",
-    4: "#44ff88",
-    5: "#ff8844",
-    6: "#ff44ff",
-    7: "#44ffff"
-  };
-
   // src/games/tetromino/renderer.ts
   var CELL = 18;
   var BOARD_W = BOARD_COLS * CELL;
@@ -1130,7 +1225,7 @@
   function drawPanel(ctx, player, px, py, isMe) {
     const ox = px;
     const oy = py + 22;
-    ctx.fillStyle = PLAYER_COLORS2[player.id];
+    ctx.fillStyle = PLAYER_COLORS[player.id];
     ctx.font = `bold 13px monospace`;
     ctx.fillText(`${player.name} L${player.level}`, px, py + 14);
     ctx.fillStyle = "#aaa";
@@ -1194,7 +1289,7 @@
   var definition = {
     id: "tetromino",
     name: "Tetromino Battle",
-    description: "Competitive 4-player Tetris \u2014 clear lines to send garbage to your opponents.",
+    description: "Competitive 4-player Tetromino \u2014 clear lines to send garbage to your opponents.",
     minPlayers: 1,
     maxPlayers: 4,
     actions,
@@ -1222,7 +1317,7 @@
     <ul>
       <li>2 lines \u2192 1 garbage line sent</li>
       <li>3 lines \u2192 2 garbage lines sent</li>
-      <li>4 lines (Tetris) \u2192 4 garbage lines sent</li>
+      <li>4 lines (Tetromino) \u2192 4 garbage lines sent</li>
     </ul>
   `,
     settings: [
@@ -1248,8 +1343,15 @@
   };
   var definition_default = definition;
 
+  // src/games/registry.ts
+  var GAMES = [
+    definition_default
+    // Add new games here ↓
+  ];
+
   // src/games/index.ts
-  registerClientGame(definition_default);
+  for (const game of GAMES)
+    registerClientGame(game);
 
   // src/client/main.ts
   var root = document.getElementById("app");

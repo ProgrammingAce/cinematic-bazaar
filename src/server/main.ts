@@ -2,10 +2,9 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { attachWebSocketServer, registerGame } from '../framework/server/network/ws';
-import tetrominoGame from '../games/tetromino/definition';
+import { GAMES } from '../games/registry';
 
-// Register all games
-registerGame(tetrominoGame as any);
+for (const game of GAMES) registerGame(game);
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 

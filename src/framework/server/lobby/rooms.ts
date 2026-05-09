@@ -4,7 +4,8 @@ import { generateRoomCode } from '../../shared/utils';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const gameRegistry = new Map<string, GameDefinition<any, any>>();
 
-export function registerServerGame(def: GameDefinition<BaseGameState, BaseInput>): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function registerServerGame(def: GameDefinition<any, any>): void {
   gameRegistry.set(def.id, def);
 }
 
@@ -112,7 +113,6 @@ export class RoomManager {
     if (room.players.length < def.minPlayers) return { ok: false, error: `Need at least ${def.minPlayers} players` };
     if (!room.players.every(p => p.ready || p.id === room.host)) return { ok: false, error: 'Not all players are ready' };
 
-    room.started = true;
     return { ok: true, room };
   }
 
@@ -141,5 +141,20 @@ export class RoomManager {
     const player = room.players.find(p => p.id === info.playerId);
     if (player) player.name = name;
     if (room.host === info.playerId) room.name = `${name}'s room`;
+  }
+
+  updateSettings(socketId: string, settings: Record<string, unknown>): RoomState | null {
+    const info = this.socketToPlayer.get(socketId);
+    if (!info) return null;
+    const room = this.rooms.get(info.roomCode);
+    if (!room || room.host !== info.playerId || room.started) return null;
+    const def = gameRegistry.get(room.gameId);
+    if (!def) return null;
+    for (const s of def.settings ?? []) {
+      if (Object.prototype.hasOwnProperty.call(settings, s.key)) {
+        room.gameSettings[s.key] = settings[s.key];
+      }
+    }
+    return room;
   }
 }

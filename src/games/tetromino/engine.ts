@@ -231,6 +231,11 @@ export function tick(
     }
   }
 
+  // Mark game over in state so the renderer can show the overlay immediately
+  const aliveAfter = next.players.filter(p => !p.dead);
+  const gameEnded = next.players.length === 1 ? aliveAfter.length === 0 : aliveAfter.length <= 1;
+  if (gameEnded) next.phase = 'game_over';
+
   return { state: next, events };
 }
 

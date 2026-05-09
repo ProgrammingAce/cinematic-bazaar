@@ -3,6 +3,7 @@ import type { RoomState } from '../../shared/types';
 import { TICK_MS } from '../../shared/constants';
 
 export type BroadcastFn = (roomCode: string, msg: object) => void;
+export type DoneFn = (roomCode: string) => void;
 
 export class GameRunner {
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -12,16 +13,19 @@ export class GameRunner {
   private inputs = new Map<PlayerId, BaseInput>();
   private roomCode: string;
   private broadcast: BroadcastFn;
+  private onDone: DoneFn;
   private lastTick = Date.now();
 
   constructor(
     def: GameDefinition<BaseGameState, BaseInput>,
     room: RoomState,
     broadcast: BroadcastFn,
+    onDone: DoneFn = () => {},
   ) {
     this.def = def;
     this.roomCode = room.code;
     this.broadcast = broadcast;
+    this.onDone = onDone;
 
     const humanIds = room.players.map(p => p.id);
     const allIds: PlayerId[] = [];
@@ -95,6 +99,7 @@ export class GameRunner {
       const scores: Record<number, number> = {};
       for (const p of this.state.players) scores[p.id] = p.score;
       this.broadcast(this.roomCode, { type: 'game_over', winner, scores });
+      this.onDone(this.roomCode);
     }
   }
 

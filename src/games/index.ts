@@ -1,4 +1,4 @@
 import { registerClientGame } from '../framework/client/ui/manager';
-import tetrominoGame from './tetromino/definition';
+import { GAMES } from './registry';
 
-registerClientGame(tetrominoGame as any);
+for (const game of GAMES) registerClientGame(game);

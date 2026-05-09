@@ -17,7 +17,8 @@ const connections = new Map<string, Connection>();
 const activeGames = new Map<string, GameRunner>(); // roomCode → runner
 const roomManager = new RoomManager();
 
-export function registerGame(def: GameDefinition<BaseGameState, BaseInput>): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function registerGame(def: GameDefinition<any, any>): void {
   registerServerGame(def);
 }
 
@@ -108,17 +109,24 @@ export function attachWebSocketServer(server: Server): void {
           break;
         }
 
+        case 'update_settings': {
+          const updated = roomManager.updateSettings(socketId, msg.settings as Record<string, unknown>);
+          if (updated) broadcast(updated.code, { type: 'room_update', room: updated });
+          break;
+        }
+
         case 'start_game': {
           const check = roomManager.canStart(socketId);
           if (!check.ok) { send(conn, { type: 'error', message: check.error! }); return; }
           const room = check.room!;
+          roomManager.markStarted(room.code);
 
           // Import game def lazily via registry
           const { getGameDef } = require('../lobby/rooms');
           const def = getGameDef(room.gameId);
           if (!def) { send(conn, { type: 'error', message: 'Game not found' }); return; }
 
-          const runner = new GameRunner(def, room, broadcast);
+          const runner = new GameRunner(def, room, broadcast, code => activeGames.delete(code));
           activeGames.set(room.code, runner);
 
           broadcast(room.code, {

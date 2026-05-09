@@ -1,4 +1,5 @@
 import type { GameDefinition, BaseGameState, BaseInput, PlayerId, RoomState, ServerMessage } from '../../shared/types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../../shared/constants';
 import { GameWebSocket } from '../network/ws';
 import { InputHandler } from '../input/handler';
 
@@ -7,7 +8,8 @@ type Screen = 'connecting' | 'main_menu' | 'browser' | 'lobby' | 'game' | 'game_
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const gameRegistry = new Map<string, GameDefinition<any, any>>();
 
-export function registerClientGame(def: GameDefinition<BaseGameState, BaseInput>): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function registerClientGame(def: GameDefinition<any, any>): void {
   gameRegistry.set(def.id, def);
 }
 
@@ -37,8 +39,8 @@ export class UIManager {
   constructor(root: HTMLElement) {
     this.root = root;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = 800;
-    this.canvas.height = 600;
+    this.canvas.width = CANVAS_WIDTH;
+    this.canvas.height = CANVAS_HEIGHT;
     this.ctx = this.canvas.getContext('2d')!;
     this.socket = new GameWebSocket();
   }
@@ -109,14 +111,19 @@ export class UIManager {
   }
 
   private startGameLoop(): void {
+    let lastSentInput = '';
     const loop = (): void => {
       if (this.screen !== 'game') return;
       if (this.latestState && this.currentGame) {
         const input = this.input.getInput();
-        this.socket.send({ type: 'input', tick: this.latestState.tick, input });
+        const serialized = JSON.stringify(input);
+        if (serialized !== lastSentInput) {
+          this.socket.send({ type: 'input', tick: this.latestState.tick, input });
+          lastSentInput = serialized;
+        }
         this.input.flush();
         this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, 800, 600);
+        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         this.currentGame.renderer.render(this.ctx, this.latestState, this.myPlayerId);
       }
       this.rafId = requestAnimationFrame(loop);
@@ -279,6 +286,13 @@ export class UIManager {
       ? el('p', { className: 'error-msg' }, [this.errorMessage])
       : null;
 
+    const howToPlayBtn = def?.howToPlay
+      ? el('button', {
+          className: 'btn-secondary',
+          onclick: () => this.showHowToPlay(def.howToPlay!),
+        }, ['? How to Play'])
+      : null;
+
     this.root.appendChild(el('div', { className: 'screen browser' }, [
       el('div', { className: 'browser-header' }, [
         el('button', {
@@ -286,10 +300,13 @@ export class UIManager {
           onclick: () => { this.errorMessage = ''; this.setScreen('main_menu'); },
         }, ['← Back']),
         el('h1', {}, [def?.name ?? 'Game']),
-        el('button', {
-          className: 'btn-primary',
-          onclick: () => this.socket.send({ type: 'create_room', gameId: this.browsedGameId }),
-        }, ['+ Create Room']),
+        el('div', { className: 'browser-header-actions' }, [
+          ...(howToPlayBtn ? [howToPlayBtn] : []),
+          el('button', {
+            className: 'btn-primary',
+            onclick: () => this.socket.send({ type: 'create_room', gameId: this.browsedGameId }),
+          }, ['+ Create Room']),
+        ]),
       ]),
       ...(errorEl ? [errorEl] : []),
       el('div', { className: 'room-list' }, [
@@ -395,8 +412,76 @@ export class UIManager {
       ]),
       ...(errorEl ? [errorEl] : []),
       el('div', { className: 'player-list' }, playerRows),
+      ...(isHost && def?.settings?.length ? [this.renderSettings(def.settings, room.gameSettings)] : []),
       el('div', { className: 'lobby-actions' }, actions),
     ]));
+  }
+
+  private renderSettings(
+    defs: import('../../shared/types').SettingDefinition[],
+    current: Record<string, unknown>,
+  ): HTMLElement {
+    const rows = defs.map(s => {
+      let control: HTMLElement;
+
+      if (s.type === 'range') {
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = String(s.min ?? 0);
+        input.max = String(s.max ?? 100);
+        input.step = String(s.step ?? 1);
+        input.value = String(current[s.key] ?? s.default);
+        const valueLabel = document.createElement('span');
+        valueLabel.className = 'setting-value';
+        valueLabel.textContent = input.value;
+        input.addEventListener('input', () => {
+          valueLabel.textContent = input.value;
+        });
+        input.addEventListener('change', () => {
+          this.socket.send({ type: 'update_settings', settings: { [s.key]: Number(input.value) } });
+        });
+        const wrap = document.createElement('div');
+        wrap.className = 'setting-range-wrap';
+        wrap.appendChild(input);
+        wrap.appendChild(valueLabel);
+        control = wrap;
+
+      } else if (s.type === 'toggle') {
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'setting-toggle';
+        input.checked = Boolean(current[s.key] ?? s.default);
+        input.addEventListener('change', () => {
+          this.socket.send({ type: 'update_settings', settings: { [s.key]: input.checked } });
+        });
+        control = input;
+
+      } else {
+        const select = document.createElement('select');
+        select.className = 'setting-select';
+        for (const opt of s.options ?? []) {
+          const o = document.createElement('option');
+          o.value = opt;
+          o.textContent = opt;
+          if (opt === String(current[s.key] ?? s.default)) o.selected = true;
+          select.appendChild(o);
+        }
+        select.addEventListener('change', () => {
+          this.socket.send({ type: 'update_settings', settings: { [s.key]: select.value } });
+        });
+        control = select;
+      }
+
+      return el('div', { className: 'setting-row' }, [
+        el('label', { className: 'setting-label' }, [s.label]),
+        control,
+      ]);
+    });
+
+    return el('div', { className: 'settings-panel' }, [
+      el('div', { className: 'section-label' }, ['Game Settings']),
+      ...rows,
+    ]);
   }
 
   private renderGameOver(): void {
@@ -455,6 +540,24 @@ export class UIManager {
         }, ['Main Menu']),
       ]),
     ]));
+  }
+
+  private showHowToPlay(html: string): void {
+    const overlay = el('div', { className: 'htp-overlay' }, [
+      el('div', { className: 'htp-dialog' }, [
+        el('div', { className: 'htp-header' }, [
+          el('h2', {}, ['How to Play']),
+          el('button', { className: 'btn-back', onclick: () => overlay.remove() }, ['✕ Close']),
+        ]),
+        (() => {
+          const body = document.createElement('div');
+          body.className = 'htp-body';
+          body.innerHTML = html;
+          return body;
+        })(),
+      ]),
+    ]);
+    this.root.appendChild(overlay);
   }
 
   private getStoredName(): string {

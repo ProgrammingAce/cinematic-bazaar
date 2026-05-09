@@ -131,6 +131,7 @@ export type ClientMessage =
   | { type: 'rename'; name: string }
   | { type: 'create_room'; gameId: string }
   | { type: 'join_room'; code: string }
+  | { type: 'update_settings'; settings: Record<string, unknown> }
   | { type: 'leave_room' }
   | { type: 'request_room_list' }
   | { type: 'ready' }

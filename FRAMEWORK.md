@@ -339,12 +339,12 @@ interface AIAdapter<TState, TInput> {
 
 ### Connection lifecycle
 
-1. Client connects → server sends `{ type: 'connected' }` (no payload; connection ack only).
+1. Client connects → server sends `{ type: 'connected', playerId: 0 }` (placeholder ack; slot is not yet assigned).
 2. Client sends `{ type: 'join', name }`.
-3. Client creates or joins a room → server sends `{ type: 'player_assigned', playerId }` to that client only, followed by a `room_update` broadcast to the room.
-4. Game starts → server sends `{ type: 'player_assigned', playerId }` again (slot may differ from lobby order) then broadcasts `game_start`.
+3. Client creates or joins a room → server sends `{ type: 'connected', playerId }` to that client only (actual slot), followed by a `room_update` broadcast to the room.
+4. Game starts → server sends `{ type: 'connected', playerId }` again to each player individually (slot is stable but re-confirmed), then broadcasts `game_start`.
 
-`player_assigned` is always sent **to the specific client** whose slot is being communicated. It is never broadcast.
+`connected` with a real `playerId` is always sent **to the specific client** whose slot is being communicated. It is never broadcast.
 
 ### Framework-owned messages
 
@@ -359,8 +359,7 @@ interface AIAdapter<TState, TInput> {
 | C→S | `ready` | — | Toggle ready state (not "set ready") |
 | C→S | `start_game` | — | Host starts game; server validates all non-host players ready |
 | C→S | `ping` | — | Keep-alive, sent every 1 s |
-| S→C | `connected` | — | Connection ack; no payload |
-| S→C | `player_assigned` | `{ playerId }` | This client's slot in the current room/game |
+| S→C | `connected` | `{ playerId }` | Connection ack (placeholder `0`) on connect; real slot after create/join/start |
 | S→C | `room_update` | `{ room: RoomState }` | Room state changed; sent to every member |
 | S→C | `room_list` | `{ rooms: RoomState[] }` | Open rooms (response to `request_room_list`) |
 | S→C | `error` | `{ message }` | Human-readable error string |
@@ -371,7 +370,7 @@ interface AIAdapter<TState, TInput> {
 | Direction | Type | Payload | Notes |
 |-----------|------|---------|-------|
 | C→S | `input` | `{ tick: number; input: TInput }` | Sent each frame by the input handler |
-| S→C | `game_start` | `{ gameId: string; settings: Record<string, unknown> }` | Broadcast to room; no playerId (use `player_assigned`) |
+| S→C | `game_start` | `{ gameId: string; settings: Record<string, unknown> }` | Broadcast to room; no playerId (each player already received `connected` with their slot) |
 | S→C | `state` | `{ tick: number; state: TState; events: GameEvent[] }` | Authoritative state, 60Hz |
 | S→C | `game_over` | `{ winner: PlayerId \| null; scores: Record<PlayerId, number> }` | Sent when `isGameOver()` returns true |
 
@@ -487,17 +486,25 @@ node dist/server/server.js # wrong — cwd changes, public/ not found
 
 ## Building a New Game
 
-### Step 1 — Create game directory
+### Step 1 — Copy the template
+
+```
+cp -r src/games/_template src/games/<game-id>
+```
+
+Rename every occurrence of `Template` / `template` in the copied files to match your game. The template files compile as-is and include inline TODOs for every decision point.
+
+The directory structure is:
 
 ```
 src/games/<game-id>/
-  definition.ts
-  state.ts
-  input.ts
-  engine.ts
-  renderer.ts
-  constants.ts
-  events.ts     (optional)
+  definition.ts   ← entry point; assemble all pieces here
+  state.ts        ← TState interface + createInitialState
+  input.ts        ← ActionSchema, defaultActionMap, TInput type
+  engine.ts       ← tick(), isGameOver(), getWinner()
+  renderer.ts     ← GameRenderer<TState> implementation
+  constants.ts    ← game-specific magic numbers
+  events.ts       ← (optional) typed GameEvent union
 ```
 
 ### Step 2 — Define state
@@ -613,10 +620,12 @@ export function getWinner(state: MyGameState): number | null {
 
 ### Step 5 — Implement renderer
 
+Import `CANVAS_WIDTH`, `CANVAS_HEIGHT`, and `PLAYER_COLORS` from the framework barrel rather than hardcoding pixel values:
+
 ```typescript
 // src/games/<game-id>/renderer.ts
 import type { GameRenderer } from '../../framework/shared/types';
-import { PLAYER_COLORS } from '../../framework/shared/constants';
+import { PLAYER_COLORS, CANVAS_WIDTH, CANVAS_HEIGHT } from '../../framework/shared/constants';
 import type { MyGameState } from './state';
 
 export const renderer: GameRenderer<MyGameState> = {
@@ -663,21 +672,22 @@ const definition: GameDefinition<MyGameState, MyInput> = {
 export default definition;
 ```
 
-### Step 7 — Register (both bundles)
+### Step 7 — Register the game
+
+Edit **one file only**: `src/games/registry.ts`.
 
 ```typescript
-// src/games/index.ts  — client bundle only; renderer is safe to import here
-import { registerClientGame } from '../framework/client/ui/manager';
-import myGame from './my-game/definition';
-registerClientGame(myGame);
+// src/games/registry.ts
+import tetrominoGame from './tetromino/definition';
+import myGame from './my-game/definition'; // ← add this line
 
-// src/server/main.ts  — server bundle; import game but NOT its renderer
-import { registerGame } from '../framework/server/network/ws';
-import myGame from '../games/my-game/definition';
-registerGame(myGame);
+export const GAMES = [
+  tetrominoGame,
+  myGame,                                  // ← and this line
+];
 ```
 
-`registerGame` on the server calls into `registerServerGame` in `lobby/rooms.ts`, which is the registry consulted by `RoomManager` and `GameRunner`. The renderer field is present on the imported object but is never invoked on the server; esbuild will not tree-shake it automatically unless you guard the import, so keep renderer-specific dependencies (canvas, image assets) out of `engine.ts`, `state.ts`, and `definition.ts`.
+`registry.ts` is imported by all three entry points (`src/games/index.ts`, `src/server/main.ts`, `src/worker/worker.ts`). You never need to touch those files when adding a game.
 
 ### Step 8 — Verify
 
@@ -764,6 +774,26 @@ The renderer reads `phase` to show a round-end overlay. No extra framework hooks
 ---
 
 ## Framework Utilities
+
+### Import paths
+
+All framework types, constants, and utilities can be imported from the barrel:
+
+```typescript
+// Preferred — single import for everything
+import type { GameDefinition, BaseGameState, PlayerId } from '../../framework';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_COLORS, clamp, seededRandom } from '../../framework';
+```
+
+Or import from the specific sub-modules if you prefer explicit paths:
+
+```typescript
+import type { GameDefinition } from '../../framework/shared/types';
+import { CANVAS_WIDTH }        from '../../framework/shared/constants';
+import { clamp }               from '../../framework/shared/utils';
+```
+
+---
 
 From `src/framework/shared/utils.ts`:
 

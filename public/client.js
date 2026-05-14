@@ -475,9 +475,9 @@
           ])
         ]);
       });
-      const actions3 = [];
+      const actions4 = [];
       if (me && !isHost) {
-        actions3.push(el("button", {
+        actions4.push(el("button", {
           className: me.ready ? "btn-secondary" : "btn-primary",
           onclick: () => this.socket.send({ type: "ready" })
         }, [me.ready ? "Unready" : "Ready"]));
@@ -491,13 +491,13 @@
               this.socket.send({ type: "start_game" });
           }
         }, ["Start Game"]);
-        actions3.push(startBtn);
+        actions4.push(startBtn);
         if (!canStart) {
           const hint = room.players.length < (def?.minPlayers ?? 2) ? `Need at least ${def?.minPlayers ?? 2} players` : "Waiting for all players to ready up";
-          actions3.push(el("p", { className: "muted hint" }, [hint]));
+          actions4.push(el("p", { className: "muted hint" }, [hint]));
         }
       }
-      actions3.push(el("button", {
+      actions4.push(el("button", {
         className: "btn-danger",
         onclick: () => {
           this.socket.send({ type: "leave_room" });
@@ -525,7 +525,7 @@
         ...errorEl ? [errorEl] : [],
         el("div", { className: "player-list" }, playerRows),
         ...isHost && def?.settings?.length ? [this.renderSettings(def.settings, room.gameSettings)] : [],
-        el("div", { className: "lobby-actions" }, actions3)
+        el("div", { className: "lobby-actions" }, actions4)
       ]));
     }
     renderSettings(defs, current) {
@@ -2380,10 +2380,312 @@
   };
   var definition_default2 = definition2;
 
+  // src/games/pong/constants.ts
+  var PADDLE_WIDTH = 12;
+  var PADDLE_HEIGHT = 80;
+  var BALL_SIZE = 10;
+  var PADDLE_SPEED = 440;
+  var BALL_SPEED_INITIAL = 320;
+  var BALL_SPEED_MAX = 720;
+  var BALL_SPEED_INCREMENT = 18;
+  var WIN_SCORE = 7;
+  var PADDLE_X = 40;
+
+  // src/games/pong/state.ts
+  function createInitialState3(config) {
+    return {
+      tick: 0,
+      phase: "playing",
+      hitCount: 0,
+      ball: {
+        x: CANVAS_WIDTH / 2,
+        y: CANVAS_HEIGHT / 2,
+        vx: BALL_SPEED_INITIAL,
+        vy: BALL_SPEED_INITIAL * 0.3
+      },
+      players: config.playerIds.map((id, i) => ({
+        id,
+        name: config.playerNames[i],
+        color: config.playerColors[i],
+        score: 0,
+        isAI: config.aiSlots.includes(id),
+        connected: true,
+        paddleY: CANVAS_HEIGHT / 2
+      }))
+    };
+  }
+
+  // src/games/pong/engine.ts
+  function tick3(state, inputs, dt) {
+    const next = {
+      ...state,
+      tick: state.tick + 1,
+      ball: { ...state.ball },
+      players: state.players.map((p) => ({ ...p }))
+    };
+    for (const player of next.players) {
+      const inp = inputs.get(player.id) ?? {};
+      if (inp.MOVE_UP)
+        player.paddleY -= PADDLE_SPEED * dt;
+      if (inp.MOVE_DOWN)
+        player.paddleY += PADDLE_SPEED * dt;
+      player.paddleY = clamp(
+        player.paddleY,
+        PADDLE_HEIGHT / 2,
+        CANVAS_HEIGHT - PADDLE_HEIGHT / 2
+      );
+    }
+    next.ball.x += next.ball.vx * dt;
+    next.ball.y += next.ball.vy * dt;
+    if (next.ball.y - BALL_SIZE / 2 <= 0) {
+      next.ball.y = BALL_SIZE / 2;
+      next.ball.vy = Math.abs(next.ball.vy);
+    } else if (next.ball.y + BALL_SIZE / 2 >= CANVAS_HEIGHT) {
+      next.ball.y = CANVAS_HEIGHT - BALL_SIZE / 2;
+      next.ball.vy = -Math.abs(next.ball.vy);
+    }
+    const events = [];
+    const leftPlayer = next.players[0];
+    if (leftPlayer) {
+      const px = PADDLE_X;
+      const py = leftPlayer.paddleY;
+      if (next.ball.vx < 0 && next.ball.x - BALL_SIZE / 2 <= px + PADDLE_WIDTH / 2 && next.ball.x + BALL_SIZE / 2 >= px - PADDLE_WIDTH / 2 && next.ball.y + BALL_SIZE / 2 >= py - PADDLE_HEIGHT / 2 && next.ball.y - BALL_SIZE / 2 <= py + PADDLE_HEIGHT / 2) {
+        next.ball.x = px + PADDLE_WIDTH / 2 + BALL_SIZE / 2;
+        const rel = clamp((next.ball.y - py) / (PADDLE_HEIGHT / 2), -1, 1);
+        const speed = Math.min(speedOf(next.ball) + BALL_SPEED_INCREMENT, BALL_SPEED_MAX);
+        next.ball.vx = speed * Math.cos(rel * 0.7);
+        next.ball.vy = speed * Math.sin(rel * 0.7);
+        next.hitCount++;
+        events.push({ type: "paddle_hit", paddleIndex: 0 });
+      }
+    }
+    const rightPlayer = next.players[1];
+    if (rightPlayer) {
+      const px = CANVAS_WIDTH - PADDLE_X;
+      const py = rightPlayer.paddleY;
+      if (next.ball.vx > 0 && next.ball.x + BALL_SIZE / 2 >= px - PADDLE_WIDTH / 2 && next.ball.x - BALL_SIZE / 2 <= px + PADDLE_WIDTH / 2 && next.ball.y + BALL_SIZE / 2 >= py - PADDLE_HEIGHT / 2 && next.ball.y - BALL_SIZE / 2 <= py + PADDLE_HEIGHT / 2) {
+        next.ball.x = px - PADDLE_WIDTH / 2 - BALL_SIZE / 2;
+        const rel = clamp((next.ball.y - py) / (PADDLE_HEIGHT / 2), -1, 1);
+        const speed = Math.min(speedOf(next.ball) + BALL_SPEED_INCREMENT, BALL_SPEED_MAX);
+        next.ball.vx = -speed * Math.cos(rel * 0.7);
+        next.ball.vy = speed * Math.sin(rel * 0.7);
+        next.hitCount++;
+        events.push({ type: "paddle_hit", paddleIndex: 1 });
+      }
+    }
+    if (next.ball.x < -BALL_SIZE) {
+      if (next.players[1])
+        next.players[1].score++;
+      events.push({ type: "score", scorer: 1 });
+      resetBall(next, 1);
+    } else if (next.ball.x > CANVAS_WIDTH + BALL_SIZE) {
+      if (next.players[0])
+        next.players[0].score++;
+      events.push({ type: "score", scorer: 0 });
+      resetBall(next, -1);
+    }
+    for (const player of next.players) {
+      if (player.score >= WIN_SCORE) {
+        next.phase = "game_over";
+        break;
+      }
+    }
+    return { state: next, events };
+  }
+  function speedOf(ball) {
+    return Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+  }
+  function resetBall(state, direction) {
+    const rng = seededRandom(state.tick);
+    const angle = (rng - 0.5) * 0.8;
+    const speed = BALL_SPEED_INITIAL;
+    state.ball = {
+      x: CANVAS_WIDTH / 2,
+      y: CANVAS_HEIGHT / 2,
+      vx: direction * speed * Math.cos(angle),
+      vy: speed * Math.sin(angle)
+    };
+    state.hitCount = 0;
+  }
+  function isGameOver3(state) {
+    return state.phase === "game_over";
+  }
+  function getWinner3(state) {
+    if (state.players.length < 2)
+      return state.players[0]?.id ?? null;
+    const sorted = [...state.players].sort((a, b) => b.score - a.score);
+    if (sorted[0].score === sorted[1].score)
+      return null;
+    return sorted[0].id;
+  }
+
+  // src/games/pong/input.ts
+  var actions3 = {
+    MOVE_UP: { label: "Move Up", type: "held" },
+    MOVE_DOWN: { label: "Move Down", type: "held" }
+  };
+  var defaultActionMap3 = {
+    keyboard: {
+      ArrowUp: "MOVE_UP",
+      KeyW: "MOVE_UP",
+      ArrowDown: "MOVE_DOWN",
+      KeyS: "MOVE_DOWN"
+    }
+  };
+
+  // src/games/pong/renderer.ts
+  var renderer3 = {
+    render(ctx, state, myPlayerId) {
+      const p0 = state.players[0];
+      const p1 = state.players[1];
+      ctx.setLineDash([10, 14]);
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(CANVAS_WIDTH / 2, 0);
+      ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "bold 64px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      if (p0)
+        ctx.fillText(String(p0.score), CANVAS_WIDTH / 2 - 80, 80);
+      if (p1)
+        ctx.fillText(String(p1.score), CANVAS_WIDTH / 2 + 80, 80);
+      const dotY = 95;
+      const dotSize = 5;
+      const dotGap = 13;
+      for (let i = 0; i < WIN_SCORE; i++) {
+        const filled0 = p0 && i < p0.score;
+        const filled1 = p1 && i < p1.score;
+        const baseX0 = CANVAS_WIDTH / 2 - 50 - (WIN_SCORE - 1) * dotGap / 2;
+        const baseX1 = CANVAS_WIDTH / 2 + 50 - (WIN_SCORE - 1) * dotGap / 2;
+        ctx.fillStyle = filled0 ? "#ffff00" : "rgba(255,255,255,0.2)";
+        ctx.beginPath();
+        ctx.arc(baseX0 + i * dotGap, dotY, dotSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = filled1 ? "#ffffff" : "rgba(255,255,255,0.2)";
+        ctx.beginPath();
+        ctx.arc(baseX1 + i * dotGap, dotY, dotSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (p0) {
+        const isMe = p0.id === myPlayerId;
+        ctx.fillStyle = isMe ? "#ffff88" : "#ffffff";
+        ctx.shadowColor = isMe ? "#ffff00" : "transparent";
+        ctx.shadowBlur = isMe ? 8 : 0;
+        ctx.fillRect(
+          PADDLE_X - PADDLE_WIDTH / 2,
+          p0.paddleY - PADDLE_HEIGHT / 2,
+          PADDLE_WIDTH,
+          PADDLE_HEIGHT
+        );
+      }
+      if (p1) {
+        const isMe = p1.id === myPlayerId;
+        ctx.fillStyle = isMe ? "#ffff88" : "#ffffff";
+        ctx.shadowColor = isMe ? "#ffff00" : "transparent";
+        ctx.shadowBlur = isMe ? 8 : 0;
+        ctx.fillRect(
+          CANVAS_WIDTH - PADDLE_X - PADDLE_WIDTH / 2,
+          p1.paddleY - PADDLE_HEIGHT / 2,
+          PADDLE_WIDTH,
+          PADDLE_HEIGHT
+        );
+      }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 10;
+      ctx.fillRect(
+        state.ball.x - BALL_SIZE / 2,
+        state.ball.y - BALL_SIZE / 2,
+        BALL_SIZE,
+        BALL_SIZE
+      );
+      ctx.shadowBlur = 0;
+      ctx.font = "11px monospace";
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      if (p0) {
+        ctx.textAlign = "left";
+        ctx.fillText(p0.name + (p0.isAI ? " [AI]" : ""), PADDLE_X + PADDLE_WIDTH / 2 + 6, CANVAS_HEIGHT - 8);
+      }
+      if (p1) {
+        ctx.textAlign = "right";
+        ctx.fillText(p1.name + (p1.isAI ? " [AI]" : ""), CANVAS_WIDTH - PADDLE_X - PADDLE_WIDTH / 2 - 6, CANVAS_HEIGHT - 8);
+      }
+      ctx.textAlign = "left";
+      if (state.phase === "game_over") {
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        const winner = state.players.reduce((a, b) => a.score > b.score ? a : b, state.players[0]);
+        const isWinner = winner?.id === myPlayerId;
+        ctx.font = "bold 52px monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = isWinner ? "#ffff44" : "#ffffff";
+        ctx.fillText(isWinner ? "YOU WIN!" : "GAME OVER", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+        if (winner) {
+          ctx.font = "22px monospace";
+          ctx.fillStyle = "#aaa";
+          ctx.fillText(`${winner.name} wins ${winner.score}\u2013${state.players.find((p) => p.id !== winner.id)?.score ?? 0}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 28);
+        }
+        ctx.textAlign = "left";
+      }
+    }
+  };
+
+  // src/games/pong/definition.ts
+  var definition3 = {
+    id: "pong",
+    name: "Pong",
+    description: "Classic 1v1 paddle game. First to 7 wins.",
+    minPlayers: 2,
+    maxPlayers: 2,
+    actions: actions3,
+    defaultActionMap: defaultActionMap3,
+    createInitialState: createInitialState3,
+    tick: tick3,
+    isGameOver: isGameOver3,
+    getWinner: getWinner3,
+    renderer: renderer3,
+    howToPlay: `
+    <h3>Objective</h3>
+    <p>First player to score ${WIN_SCORE} points wins. Score by getting the ball past your opponent's paddle.</p>
+    <h3>Controls</h3>
+    <ul>
+      <li><strong>W / \u2191</strong> \u2014 Move paddle up</li>
+      <li><strong>S / \u2193</strong> \u2014 Move paddle down</li>
+    </ul>
+    <h3>Tips</h3>
+    <p>Hit the ball with the edge of your paddle to add angle. The ball speeds up with each hit!</p>
+  `,
+    settings: [
+      { key: "winScore", label: "Points to win", type: "range", default: 7, min: 3, max: 15, step: 1 }
+    ],
+    aiAdapter: {
+      computeInput(state, playerId) {
+        const idx = state.players.findIndex((p) => p.id === playerId);
+        if (idx === -1)
+          return { MOVE_UP: false, MOVE_DOWN: false };
+        const paddle = state.players[idx];
+        const ball = state.ball;
+        const diff = ball.y - paddle.paddleY;
+        const deadzone = 6;
+        return {
+          MOVE_UP: diff < -deadzone,
+          MOVE_DOWN: diff > deadzone
+        };
+      }
+    }
+  };
+  var definition_default3 = definition3;
+
   // src/games/registry.ts
   var GAMES = [
     definition_default,
-    definition_default2
+    definition_default2,
+    definition_default3
     // Add new games here ↓
   ];
 

@@ -1,0 +1,9 @@
+export const PADDLE_WIDTH = 12;
+export const PADDLE_HEIGHT = 80;
+export const BALL_SIZE = 10;
+export const PADDLE_SPEED = 440;
+export const BALL_SPEED_INITIAL = 320;
+export const BALL_SPEED_MAX = 720;
+export const BALL_SPEED_INCREMENT = 18;
+export const WIN_SCORE = 7;
+export const PADDLE_X = 40;

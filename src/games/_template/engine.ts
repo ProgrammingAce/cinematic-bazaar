@@ -1,7 +1,8 @@
-import type { TickResult, PlayerId } from '../../framework/shared/types';
+import type { TickResult, PlayerId, GameEvent } from '../../framework/shared/types';
 import { clamp } from '../../framework/shared/utils';
 import type { TemplateState } from './state';
 import type { TemplateInput } from './input';
+import type { TemplateEvent } from './events';
 
 const SPEED = 200; // pixels per second
 
@@ -34,7 +35,12 @@ export function tick(
 
   if (next.timeRemaining <= 0) next.phase = 'game_over';
 
-  return { state: next, events: [] };
+  // Emit events to clients (broadcast with state each tick).
+  // Events are typed in events.ts and reacted to in definition.ts clientHooks.onEvent.
+  const events: GameEvent[] = [];
+  // if (somethingHappened) events.push({ type: 'player_scored', playerId: 0, points: 1 });
+
+  return { state: next, events };
 }
 
 export function isGameOver(state: TemplateState): boolean {

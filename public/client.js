@@ -1,5 +1,12 @@
 "use strict";
 (() => {
+  var __defProp = Object.defineProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField = (obj, key, value) => {
+    __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+    return value;
+  };
+
   // src/framework/shared/constants.ts
   var CANVAS_WIDTH = 800;
   var CANVAS_HEIGHT = 600;
@@ -17,13 +24,13 @@
 
   // src/framework/client/network/ws.ts
   var GameWebSocket = class {
-    ws = null;
-    queue = [];
-    handlers = [];
-    primaryUrl;
-    reconnectDelay = 1e3;
-    fallbackUsed = false;
     constructor(url) {
+      __publicField(this, "ws", null);
+      __publicField(this, "queue", []);
+      __publicField(this, "handlers", []);
+      __publicField(this, "primaryUrl");
+      __publicField(this, "reconnectDelay", 1e3);
+      __publicField(this, "fallbackUsed", false);
       const proto = location.protocol === "https:" ? "wss" : "ws";
       if (url) {
         this.primaryUrl = url;
@@ -91,11 +98,29 @@
 
   // src/framework/client/input/handler.ts
   var InputHandler = class {
-    heldKeys = /* @__PURE__ */ new Set();
-    pressedKeys = /* @__PURE__ */ new Set();
-    schema = {};
-    actionMap = { keyboard: {} };
-    wheelActions = {};
+    constructor() {
+      __publicField(this, "heldKeys", /* @__PURE__ */ new Set());
+      __publicField(this, "pressedKeys", /* @__PURE__ */ new Set());
+      __publicField(this, "schema", {});
+      __publicField(this, "actionMap", { keyboard: {} });
+      __publicField(this, "wheelActions", {});
+      __publicField(this, "onKeyDown", (e) => {
+        this.heldKeys.add(e.code);
+        this.pressedKeys.add(e.code);
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
+          e.preventDefault();
+        }
+      });
+      __publicField(this, "onKeyUp", (e) => {
+        this.heldKeys.delete(e.code);
+      });
+      __publicField(this, "onWheel", (e) => {
+        if (e.deltaY < 0 && this.wheelActions.up)
+          this.pressedKeys.add("__wheel_up__");
+        if (e.deltaY > 0 && this.wheelActions.down)
+          this.pressedKeys.add("__wheel_down__");
+      });
+    }
     init(schema, actionMap) {
       this.schema = schema;
       this.actionMap = actionMap;
@@ -113,22 +138,6 @@
       this.heldKeys.clear();
       this.pressedKeys.clear();
     }
-    onKeyDown = (e) => {
-      this.heldKeys.add(e.code);
-      this.pressedKeys.add(e.code);
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
-        e.preventDefault();
-      }
-    };
-    onKeyUp = (e) => {
-      this.heldKeys.delete(e.code);
-    };
-    onWheel = (e) => {
-      if (e.deltaY < 0 && this.wheelActions.up)
-        this.pressedKeys.add("__wheel_up__");
-      if (e.deltaY > 0 && this.wheelActions.down)
-        this.pressedKeys.add("__wheel_down__");
-    };
     // Call once per frame after sending input to consume press events
     flush() {
       this.pressedKeys.clear();
@@ -160,26 +169,26 @@
     gameRegistry.set(def.id, def);
   }
   var UIManager = class {
-    screen = "connecting";
-    socket;
-    input = new InputHandler();
-    canvas;
-    ctx;
-    root;
-    myPlayerId = 0;
-    currentRoom = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    currentGame = null;
-    latestState = null;
-    gameOverData = null;
-    rafId = null;
-    pingInterval = null;
-    roomListInterval = null;
-    // Browser screen state
-    browsedGameId = "";
-    openRooms = [];
-    errorMessage = "";
     constructor(root2) {
+      __publicField(this, "screen", "connecting");
+      __publicField(this, "socket");
+      __publicField(this, "input", new InputHandler());
+      __publicField(this, "canvas");
+      __publicField(this, "ctx");
+      __publicField(this, "root");
+      __publicField(this, "myPlayerId", 0);
+      __publicField(this, "currentRoom", null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      __publicField(this, "currentGame", null);
+      __publicField(this, "latestState", null);
+      __publicField(this, "gameOverData", null);
+      __publicField(this, "rafId", null);
+      __publicField(this, "pingInterval", null);
+      __publicField(this, "roomListInterval", null);
+      // Browser screen state
+      __publicField(this, "browsedGameId", "");
+      __publicField(this, "openRooms", []);
+      __publicField(this, "errorMessage", "");
       this.root = root2;
       this.canvas = document.createElement("canvas");
       this.canvas.width = CANVAS_WIDTH;
@@ -2562,19 +2571,20 @@
         const filled1 = p1 && i < p1.score;
         const baseX0 = CANVAS_WIDTH / 2 - 50 - (WIN_SCORE - 1) * dotGap / 2;
         const baseX1 = CANVAS_WIDTH / 2 + 50 - (WIN_SCORE - 1) * dotGap / 2;
-        ctx.fillStyle = filled0 ? "#ffff00" : "rgba(255,255,255,0.2)";
+        ctx.fillStyle = filled0 ? PLAYER_COLORS[p0.id] : "rgba(255,255,255,0.2)";
         ctx.beginPath();
         ctx.arc(baseX0 + i * dotGap, dotY, dotSize / 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = filled1 ? "#ffffff" : "rgba(255,255,255,0.2)";
+        ctx.fillStyle = filled1 ? PLAYER_COLORS[p1.id] : "rgba(255,255,255,0.2)";
         ctx.beginPath();
         ctx.arc(baseX1 + i * dotGap, dotY, dotSize / 2, 0, Math.PI * 2);
         ctx.fill();
       }
       if (p0) {
         const isMe = p0.id === myPlayerId;
-        ctx.fillStyle = isMe ? "#ffff88" : "#ffffff";
-        ctx.shadowColor = isMe ? "#ffff00" : "transparent";
+        const color = PLAYER_COLORS[p0.id];
+        ctx.fillStyle = isMe ? lighten(color, 0.3) : color;
+        ctx.shadowColor = isMe ? color : "transparent";
         ctx.shadowBlur = isMe ? 8 : 0;
         ctx.fillRect(
           PADDLE_X - PADDLE_WIDTH / 2,
@@ -2585,8 +2595,9 @@
       }
       if (p1) {
         const isMe = p1.id === myPlayerId;
-        ctx.fillStyle = isMe ? "#ffff88" : "#ffffff";
-        ctx.shadowColor = isMe ? "#ffff00" : "transparent";
+        const color = PLAYER_COLORS[p1.id];
+        ctx.fillStyle = isMe ? lighten(color, 0.3) : color;
+        ctx.shadowColor = isMe ? color : "transparent";
         ctx.shadowBlur = isMe ? 8 : 0;
         ctx.fillRect(
           CANVAS_WIDTH - PADDLE_X - PADDLE_WIDTH / 2,
@@ -2622,9 +2633,10 @@
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         const winner = state.players.reduce((a, b) => a.score > b.score ? a : b, state.players[0]);
         const isWinner = winner?.id === myPlayerId;
+        const winColor = winner ? PLAYER_COLORS[winner.id] : "#ffffff";
         ctx.font = "bold 52px monospace";
         ctx.textAlign = "center";
-        ctx.fillStyle = isWinner ? "#ffff44" : "#ffffff";
+        ctx.fillStyle = isWinner ? winColor : "#ffffff";
         ctx.fillText(isWinner ? "YOU WIN!" : "GAME OVER", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
         if (winner) {
           ctx.font = "22px monospace";
@@ -2635,6 +2647,13 @@
       }
     }
   };
+  function lighten(hex, amount) {
+    const num = parseInt(hex.replace("#", ""), 16);
+    const r = Math.min(255, (num >> 16 & 255) + Math.round(255 * amount));
+    const g = Math.min(255, (num >> 8 & 255) + Math.round(255 * amount));
+    const b = Math.min(255, (num & 255) + Math.round(255 * amount));
+    return `rgb(${r},${g},${b})`;
+  }
 
   // src/games/pong/definition.ts
   var definition3 = {
@@ -2678,6 +2697,16 @@
           MOVE_UP: diff < -deadzone,
           MOVE_DOWN: diff > deadzone
         };
+      }
+    },
+    clientHooks: {
+      onEvent(event, state) {
+        if (event.type === "score") {
+          console.log(`Player ${event.scorer} scored!`);
+        }
+        if (event.type === "paddle_hit") {
+          console.log(`Paddle hit at index ${event.paddleIndex}`);
+        }
       }
     }
   };

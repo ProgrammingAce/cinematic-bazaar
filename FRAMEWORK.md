@@ -54,7 +54,7 @@ src/
 │       ├── engine.ts         # tick() pure function
 │       ├── renderer.ts       # GameRenderer<TState> implementation
 │       ├── constants.ts      # Game-specific constants
-│       └── events.ts         # (optional) custom GameEvent union type
+│       ├── events.ts         # Typed GameEvent union (required if game emits events)
 ├── server/main.ts            # HTTP server entry; registers games server-side
 ├── client/main.ts            # Browser entry; imports games/index.ts
 └── worker/worker.ts          # Cloudflare Worker + Durable Object entry
@@ -288,6 +288,8 @@ The canvas size is **800×600** by default. Games can override this by providing
 
 ### Custom `GameEvent` types
 
+Every game that emits events from `tick()` must define a typed union in `events.ts`:
+
 ```typescript
 // src/games/<game-id>/events.ts
 import type { PlayerId } from '../../framework/shared/types';
@@ -297,12 +299,23 @@ export type MyGameEvent =
   | { type: 'item_spawned'; x: number; y: number };
 ```
 
-Wire client reactions via `clientHooks.onEvent`:
+**Full event lifecycle** — all four steps are required for events to be useful:
+
+1. **Define types** in `events.ts` (typed union of all possible events)
+2. **Push events** in `engine.ts` `tick()`: `return { state: next, events: [{ type: '...', ... }] }`
+3. **Wire reactions** in `definition.ts` `clientHooks.onEvent(event: MyGameEvent, state: MyState)`
+4. **React visually** in `renderer.ts` for frame-level effects (particles, screen flash, etc.)
+
+Events are broadcast to all clients with the `state` message each tick. The `onEvent` hook is called once per event per client, in emit order, **before** `renderer.render()` for that frame.
 
 ```typescript
+// definition.ts
 clientHooks: {
-  onEvent(event, state) {
+  onEvent(event: MyGameEvent, state: MyState) {
     if (event.type === 'player_scored') audioManager.play('score');
+  },
+  onGameOver(winner, scores) {
+    // Custom game-over behavior beyond the default overlay.
   },
 },
 ```
@@ -507,7 +520,7 @@ src/games/<game-id>/
   engine.ts       ← tick(), isGameOver(), getWinner()
   renderer.ts     ← GameRenderer<TState> implementation
   constants.ts    ← game-specific magic numbers
-  events.ts       ← (optional) typed GameEvent union
+  events.ts       ← typed GameEvent union (required if game emits events)
 ```
 
 ### Step 2 — Define state
@@ -623,7 +636,7 @@ export function getWinner(state: MyGameState): number | null {
 
 ### Step 5 — Implement renderer
 
-Import `CANVAS_WIDTH`, `CANVAS_HEIGHT`, and `PLAYER_COLORS` from the framework barrel rather than hardcoding pixel values:
+Import `CANVAS_WIDTH`, `CANVAS_HEIGHT`, and `PLAYER_COLORS` from the framework barrel. **Never hardcode player color hex literals** — always use `PLAYER_COLORS[player.id]` so player colors are consistent across the lobby, renderer, and any custom UI. For highlight effects (e.g. glowing local player paddle), derive a lighter variant programmatically:
 
 ```typescript
 // src/games/<game-id>/renderer.ts
@@ -634,11 +647,22 @@ import type { MyGameState } from './state';
 export const renderer: GameRenderer<MyGameState> = {
   render(ctx, state, myPlayerId) {
     for (const player of state.players) {
-      ctx.fillStyle = PLAYER_COLORS[player.id];
+      const isMe = player.id === myPlayerId;
+      const color = PLAYER_COLORS[player.id];
+      ctx.fillStyle = isMe ? lighten(color, 0.3) : color;
       ctx.fillRect(player.x, player.y, 32, 32);
     }
   },
 };
+
+// Helper to lighten a hex color for local-player highlight effects.
+function lighten(hex: string, amount: number): string {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, ((num >> 16) & 0xff) + Math.round(255 * amount));
+  const g = Math.min(255, ((num >> 8) & 0xff) + Math.round(255 * amount));
+  const b = Math.min(255, (num & 0xff) + Math.round(255 * amount));
+  return `rgb(${r},${g},${b})`;
+}
 ```
 
 ### Step 6 — Assemble definition
@@ -670,6 +694,14 @@ const definition: GameDefinition<MyGameState, MyInput> = {
   settings: [
     { key: 'gameDuration', label: 'Duration (s)', type: 'range', default: 120, min: 30, max: 300, step: 30 },
   ],
+  clientHooks: {
+    onEvent(event, state) {
+      // React to server-broadcast events (sounds, particles, UI flashes).
+    },
+    onGameOver(winner, scores) {
+      // Custom game-over behavior beyond the default overlay.
+    },
+  },
 };
 
 export default definition;
@@ -733,6 +765,7 @@ interface GameConfig {
 - `renderer.render()` runs in the browser only. Never import renderer files from server entry points.
 - `createInitialState()`, `tick()`, `isGameOver()`, `getWinner()` run on both server and in-browser. Never reference `window`, `document`, or any browser API in these functions.
 - Canvas size is configurable via `canvasSize` in `GameDefinition`. Default is **800×600**.
+- **Never hardcode player color hex literals** in renderers. Always use `PLAYER_COLORS[player.id]` from `src/framework/shared/constants.ts`. For highlight effects, derive a lighter variant programmatically (see the `lighten()` helper in the pong renderer).
 - `maxPlayers` must be between 2 and 8 inclusive.
 - `minPlayers` may be 1 (solo play). Handle the single-player case in `getWinner()`.
 
@@ -762,9 +795,11 @@ The renderer reads `phase` to show a round-end overlay. No extra framework hooks
 
 ---
 
-## Reference Implementation: Tetromino Battle
+## Reference Implementations
 
-`src/games/tetromino/` is the canonical example. Key things to study:
+### Tetromino Battle — `src/games/tetromino/`
+
+The canonical example for complex multi-player games. Key things to study:
 
 | File | What to learn |
 |------|---------------|
@@ -773,6 +808,21 @@ The renderer reads `phase` to show a round-end overlay. No extra framework hooks
 | `renderer.ts` | 2×2 panel layout for 4 players; ghost piece; mini-piece previews |
 | `input.ts` | Mix of `held` (soft drop) and `press` (rotate, hard drop) actions |
 | `events.ts` | Typed event union: `lines_cleared`, `player_dead` |
+| `definition.ts` | `clientHooks.onEvent` wiring for event reactions |
+
+### Pong — `src/games/pong/`
+
+The canonical example for simple 1v1 games. Key things to study:
+
+| File | What to learn |
+|------|---------------|
+| `state.ts` | Per-player fields (`paddleY`) alongside shared state (`ball`); settings passthrough |
+| `engine.ts` | AABB collision; `seededRandom` for deterministic ball reset; speed cap |
+| `renderer.ts` | `PLAYER_COLORS` for all player-colored elements; `lighten()` helper for local highlight |
+| `input.ts` | Minimal action schema (2 `held` actions) |
+| `events.ts` | Typed event union: `score`, `paddle_hit` |
+| `definition.ts` | `clientHooks.onEvent` wiring; `aiAdapter` with deadzone-based tracking |
+| `constants.ts` | All magic numbers centralized; `WIN_SCORE` used in renderer and description |
 
 ---
 

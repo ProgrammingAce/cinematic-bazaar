@@ -1,5 +1,5 @@
 import type { GameRenderer, PlayerId } from '../../framework/shared/types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../../framework/shared/constants';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_COLORS } from '../../framework/shared/constants';
 import type { PongState } from './state';
 import { PADDLE_WIDTH, PADDLE_HEIGHT, BALL_SIZE, PADDLE_X, WIN_SCORE } from './constants';
 
@@ -35,12 +35,12 @@ export const renderer: GameRenderer<PongState> = {
       const baseX0 = CANVAS_WIDTH / 2 - 50 - (WIN_SCORE - 1) * dotGap / 2;
       const baseX1 = CANVAS_WIDTH / 2 + 50 - (WIN_SCORE - 1) * dotGap / 2;
 
-      ctx.fillStyle = filled0 ? '#ffff00' : 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = filled0 ? PLAYER_COLORS[p0.id] : 'rgba(255,255,255,0.2)';
       ctx.beginPath();
       ctx.arc(baseX0 + i * dotGap, dotY, dotSize / 2, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = filled1 ? '#ffffff' : 'rgba(255,255,255,0.2)';
+      ctx.fillStyle = filled1 ? PLAYER_COLORS[p1.id] : 'rgba(255,255,255,0.2)';
       ctx.beginPath();
       ctx.arc(baseX1 + i * dotGap, dotY, dotSize / 2, 0, Math.PI * 2);
       ctx.fill();
@@ -49,8 +49,9 @@ export const renderer: GameRenderer<PongState> = {
     // Left paddle (player 0)
     if (p0) {
       const isMe = p0.id === myPlayerId;
-      ctx.fillStyle = isMe ? '#ffff88' : '#ffffff';
-      ctx.shadowColor = isMe ? '#ffff00' : 'transparent';
+      const color = PLAYER_COLORS[p0.id];
+      ctx.fillStyle = isMe ? lighten(color, 0.3) : color;
+      ctx.shadowColor = isMe ? color : 'transparent';
       ctx.shadowBlur = isMe ? 8 : 0;
       ctx.fillRect(
         PADDLE_X - PADDLE_WIDTH / 2,
@@ -63,8 +64,9 @@ export const renderer: GameRenderer<PongState> = {
     // Right paddle (player 1)
     if (p1) {
       const isMe = p1.id === myPlayerId;
-      ctx.fillStyle = isMe ? '#ffff88' : '#ffffff';
-      ctx.shadowColor = isMe ? '#ffff00' : 'transparent';
+      const color = PLAYER_COLORS[p1.id];
+      ctx.fillStyle = isMe ? lighten(color, 0.3) : color;
+      ctx.shadowColor = isMe ? color : 'transparent';
       ctx.shadowBlur = isMe ? 8 : 0;
       ctx.fillRect(
         CANVAS_WIDTH - PADDLE_X - PADDLE_WIDTH / 2,
@@ -108,10 +110,11 @@ export const renderer: GameRenderer<PongState> = {
 
       const winner = state.players.reduce((a, b) => (a.score > b.score ? a : b), state.players[0]);
       const isWinner = winner?.id === myPlayerId;
+      const winColor = winner ? PLAYER_COLORS[winner.id] : '#ffffff';
 
       ctx.font = 'bold 52px monospace';
       ctx.textAlign = 'center';
-      ctx.fillStyle = isWinner ? '#ffff44' : '#ffffff';
+      ctx.fillStyle = isWinner ? winColor : '#ffffff';
       ctx.fillText(isWinner ? 'YOU WIN!' : 'GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
 
       if (winner) {
@@ -123,3 +126,12 @@ export const renderer: GameRenderer<PongState> = {
     }
   },
 };
+
+// Lighten a hex color by a factor (0..1). Used to highlight the local player's paddle.
+function lighten(hex: string, amount: number): string {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, ((num >> 16) & 0xff) + Math.round(255 * amount));
+  const g = Math.min(255, ((num >> 8) & 0xff) + Math.round(255 * amount));
+  const b = Math.min(255, (num & 0xff) + Math.round(255 * amount));
+  return `rgb(${r},${g},${b})`;
+}

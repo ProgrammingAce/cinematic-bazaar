@@ -5,6 +5,7 @@ import { actions, defaultActionMap } from './input';
 import { renderer } from './renderer';
 import type { PongState } from './state';
 import type { PongInput } from './input';
+import type { PongEvent } from './events';
 import { WIN_SCORE, SPEED_INCREASE_PCT_DEFAULT } from './constants';
 
 const definition: GameDefinition<PongState, PongInput> = {
@@ -47,6 +48,18 @@ const definition: GameDefinition<PongState, PongInput> = {
         MOVE_UP:   diff < -deadzone,
         MOVE_DOWN: diff > deadzone,
       };
+    },
+  },
+  clientHooks: {
+    onEvent(event: PongEvent, state: PongState) {
+      if (event.type === 'score') {
+        // Future: play score sound, flash screen edge
+        console.log(`Player ${event.scorer} scored!`);
+      }
+      if (event.type === 'paddle_hit') {
+        // Future: play hit sound, spawn hit particles
+        console.log(`Paddle hit at index ${event.paddleIndex}`);
+      }
     },
   },
 };
